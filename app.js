@@ -12,13 +12,10 @@ let sortKey = "value";        // value | pl | name
 let sortDir = "desc";         // asc | desc
 const NS="http://www.w3.org/2000/svg";
 
-// 銘柄分類（セクター / 景気影響）
+// セクターは sectors.js の SECTOR_MAP（東証33業種 / S&P500 GICS）を参照する。
+// この SECTOR は SECTOR_MAP に無い銘柄（S&P500対象外の米国株など）のフォールバック用。
 const SECTOR={
-  "8058":"商社","8031":"商社","8035":"半導体","6861":"電子部品","6954":"機械",
-  "7974":"ゲーム","8766":"金融","8306":"金融","9432":"通信","3197":"外食","4755":"通信・IT",
-  "AAPL":"テクノロジー","MSFT":"テクノロジー","NVDA":"半導体","AMZN":"一般消費財",
-  "DIS":"メディア","RPRX":"ヘルスケア","JNJ":"ヘルスケア","KO":"生活必需品","PG":"生活必需品",
-  "BAC":"金融","GOOG":"テクノロジー","INTC":"半導体","IONQ":"テクノロジー","MU":"半導体","PLTR":"テクノロジー"
+  "RPRX":"ヘルスケア","IONQ":"情報技術"
 };
 // 景気影響：景気敏感 / 景気中立 / ディフェンシブ の3分類
 const ECO={
@@ -32,7 +29,8 @@ function classify(d){
   if(d.cat==="fund"){ d.sector="投資信託";
     d.eco=/ゴールド|GOLD/i.test(d.name)?"ディフェンシブ":"景気中立"; }  // 株式インデックス投信は中立扱い
   else if(d.cat==="cash"){ d.sector="現金"; d.eco="ディフェンシブ"; }
-  else { d.sector=SECTOR[d.code]||"その他株式"; d.eco=ECO[d.code]||"景気中立"; }
+  else { d.sector=(typeof SECTOR_MAP!=="undefined"&&SECTOR_MAP[d.code])||SECTOR[d.code]||"その他株式";
+         d.eco=ECO[d.code]||"景気中立"; }
   if(!d.acct) d.acct="その他";
 }
 const svg=document.getElementById("donut");
