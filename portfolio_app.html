@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260722f">
 </head>
 <body>
 
@@ -21,6 +21,10 @@
       CSV読込
       <input type="file" id="file" accept=".csv" multiple hidden>
     </label>
+    <button class="tbtn" id="pasteBtn" title="SBI外国株の画面コピーを貼り付けて取り込む">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="4" width="12" height="16" rx="2"/><path d="M16 4V3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v1M4 8v11a2 2 0 0 0 2 2h6"/></svg>
+      外国株貼付
+    </button>
     <button class="tbtn reset" id="reset" title="読み込んだデータを消去">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
       リセット
@@ -46,6 +50,7 @@
       <button class="fpill" data-cat="jp">日本</button>
       <button class="fpill" data-cat="us">米国</button>
       <button class="fpill" data-cat="fund">投信</button>
+      <button class="fpill" data-cat="bond">債券</button>
       <button class="fpill" data-cat="crypto">暗号</button>
     </div>
   </div>
@@ -77,6 +82,19 @@
   <!-- chart hover tooltip -->
   <div id="tip"></div>
 
+  <!-- SBI外国株 貼り付け取り込みモーダル -->
+  <div id="pasteModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span>SBI外国株を貼り付けて取り込み</span>
+        <button id="pasteClose" class="modal-x" title="閉じる">×</button></div>
+      <p class="modal-desc">SBI証券の外国株「保有証券一覧」画面を範囲選択してコピー（Ctrl+A → Ctrl+C）し、下の枠に貼り付けて「取り込む」を押してください。<b>株式・外貨建債券・預り金</b>をまとめて取り込みます。GPTでの変換は不要です。</p>
+      <textarea id="pasteArea" placeholder="ここに貼り付け…（例）&#10;* [バンク オブ アメリカ](https://.../stock/BAC)&#10;BACNYSE&#10;62.05 USD&#10;…"></textarea>
+      <div class="modal-foot">
+        <button id="pasteRun" class="tbtn load">取り込む</button>
+      </div>
+    </div>
+  </div>
+
   <!-- asset history -->
   <div class="hist-wrap">
     <div class="card">
@@ -104,7 +122,7 @@
     </div>
   </div>
 
-<script src="sectors.js"></script>
-<script src="app.js"></script>
+<script src="sectors.js?v=20260722f"></script>
+<script src="app.js?v=20260722f"></script>
 </body>
 </html>
