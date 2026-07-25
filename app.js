@@ -29,6 +29,7 @@ function classify(d){
   if(d.cat==="fund"){ d.sector="投資信託";
     d.eco=/ゴールド|GOLD/i.test(d.name)?"ディフェンシブ":"景気中立"; }  // 株式インデックス投信は中立扱い
   else if(d.cat==="cash"){ d.sector="現金"; d.eco="ディフェンシブ"; }
+  else if(d.cat==="bond"){ d.sector="債券"; d.eco="ディフェンシブ"; }
   else { d.sector=(typeof SECTOR_MAP!=="undefined"&&SECTOR_MAP[d.code])||SECTOR[d.code]||"その他株式";
          d.eco=ECO[d.code]||"景気中立"; }
   if(!d.acct) d.acct="その他";
@@ -68,6 +69,14 @@ function showTip(e,d,total){
   moveTip(e);
 }
 function hideTip(){ tipEl.style.display="none"; }
+// 資産推移グラフ用カード（日付・資産残高・評価損益）
+function histTipHTML(h){
+  const pl=h.total-h.cost, pct=h.cost?pl/h.cost*100:0, sg=pl>=0?"+":"";
+  return `<div class="tip-h"><b>${h.date.replace(/-/g,"/")}</b></div>`+
+    `<div class="tip-r"><span>資産残高</span><b>¥${fmt(h.total)}</b></div>`+
+    `<div class="tip-r"><span>評価損益</span>`+
+    `<b class="${pl>=0?'pos':'neg'}">${sg}¥${fmt(pl)} (${sg}${pct.toFixed(2)}%)</b></div>`;
+}
 // チャート領域にツールチップイベントを付与
 function attachTip(el,d,total){
   el.addEventListener("mouseenter",ev=>showTip(ev,d,total));
@@ -153,16 +162,123 @@ function parseSBI(rows){
   return out;
 }
 
-// SBI外国株（米国株）形式
+// SBI外国株形式。株式＋預り金（外貨現金）に対応。外貨債券セクションはスキップ。
+// 旧形式（株式一覧のみ）は先頭が株式ヘッダーなので stock で開始してそのまま動く。
 function parseSBIForeign(rows){
   const out=[];
-  for(let i=1;i<rows.length;i++){          // 1行目はヘッダー
-    const r=rows[i];
-    if(r.length<13 || !(r[0]||"").trim()) continue;
-    const value=num(r[12]), cost=num(r[10]);   // 評価額_円換算 / 取得金額_円換算
-    if(value<=0) continue;
-    out.push({ name:(r[0]||"").trim(), code:(r[1]||"").trim(), value, cost, cat:"us", acct:"外国株式", qty:num(r[5]) });
+  let mode="stock";
+  for(const r of rows){
+    const first=(r[0]||"").trim();
+    if(!first) continue;
+    // セクション見出し・ヘッダー行でモードを切り替える
+    if(first==="外国株式"){ mode="stock"; continue; }
+    if(first==="外貨債券"||first==="外貨建債券"){ mode="bond"; continue; }
+    if(first==="預り金"){ mode="cash"; continue; }
+    if(first==="銘柄名"){ mode = r.includes("ティッカー") ? "stock" : "bond"; continue; }  // 株式/債券のヘッダー
+    if(first==="通貨") continue;   // 預り金セクションのヘッダー
+    if(mode==="stock"){
+      if(r.length<13) continue;
+      const value=num(r[12]), cost=num(r[10]);   // 評価額_円換算 / 取得金額_円換算
+      if(value>0) out.push({ name:first, code:(r[1]||"").trim(), value, cost, cat:"us", acct:"外国株式", qty:num(r[5]) });
+    }else if(mode==="cash"){
+      const value=num(r[2]);   // 通貨,保有数量,円換算評価額
+      if(value>0) out.push({ name:first+"（現金）", code:"現金", value, cost:value, cat:"cash", acct:"外貨預り金" });
+    }else if(mode==="bond"){
+      // 銘柄名,保有額面_USD,取得単価,取得為替,外貨建評価額_USD,円換算評価額
+      const value=num(r[5]);
+      if(value>0){
+        const cost=Math.round(num(r[1])*num(r[2])/100*num(r[3]));  // 額面×取得単価%×取得為替
+        out.push({ name:first, code:"債券", value, cost:cost>0?cost:value, cat:"bond", acct:"外貨建債券" });
+      }
+    }
   }
+  return out;
+}
+
+// SBI外国株「保有証券一覧」画面をコピーしたテキストを取り込む（GPT変換を不要にする）
+// 株式・外貨建債券・預り金の3セクションに対応。
+function parseSBIForeignPaste(text){
+  // 不可視文字・特殊空白を除去/正規化（コードポイントで判定。貼り付け失敗の主因）
+  text=String(text).replace(/[\s\S]/g,ch=>{
+    const c=ch.charCodeAt(0);
+    if(c===0xFEFF||c===0x200B||c===0x200C||c===0x200D||c===0x2060) return "";  // BOM・ゼロ幅
+    if(c===0x2028||c===0x2029) return "\n";                                    // 行・段落区切り
+    if(c===0xA0||c===0x2007||c===0x202F||c===0x3000) return " ";               // NBSP・全角空白
+    return ch;
+  });
+  // 空行を除いた行配列（プレーンテキスト形式は各値が空行で区切られる）
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(s=>s.length);
+  const out=[];
+  let mode="stock";
+  const MKT=/^([A-Za-z][A-Za-z0-9.\-]*)(NYSE|NASDAQ|NYSEARCA|ARCA|AMEX|BATS|CBOE|OTC)$/;  // 例: BACNYSE
+  const yenOf=s=>{ const m=s.match(/^([+\-]?[\d,]+)\s*円$/); return m?parseInt(m[1].replace(/[,+]/g,""),10):null; };
+  const usdOf=s=>{ const m=s.match(/^([\d,]+(?:\.\d+)?)\s*USD$/); return m?parseFloat(m[1].replace(/,/g,"")):null; };
+  const plainNum=s=>{ const m=s.match(/^([\d,]+(?:\.\d+)?)$/); return m?parseFloat(m[1].replace(/,/g,"")):null; };
+  const HEADER=/^(銘柄|現在値|円換算額|保有数量|\(売却注文中\)|取得単価|取得金額|外貨建評価額|円換算評価額|外貨建評価損益|円換算評価損益|金額|%|取引|通貨|保有額面|取得為替|総評価合計|外貨建債券の表示について|現買|現売|積立|買付|売却)$/;
+  const nameOf=s=>{ const md=s.match(/\[(.+?)\]/); return md?md[1]:s.replace(/^\*\s*/,"").trim(); };  // Markdownリンク/プレーン両対応
+
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i];
+    if(/^外貨建債券/.test(ln)){ mode="bond"; continue; }
+    if(/^預り金/.test(ln)){ mode="cash"; continue; }
+
+    // 株式: ティッカー行（BACNYSE 等）を各銘柄の起点にし、直前の行を銘柄名とする
+    if(mode==="stock"){
+      const mt=ln.match(MKT);
+      if(!mt) continue;
+      const code=mt[1];
+      const name=i>0 ? nameOf(lines[i-1]) : code;
+      const yens=[]; let qty=null, j=i+1;
+      for(; j<lines.length; j++){
+        const l=lines[j];
+        if(MKT.test(l) || /^外貨建債券|^預り金/.test(l)) break;
+        const y=yenOf(l);
+        if(y!==null) yens.push(y);
+        else if(qty===null && /^\d{1,7}$/.test(l)) qty=parseInt(l,10);   // 保有数量（"(0)"は括弧付きで除外）
+      }
+      // yens = [現在値円, 取得単価円, 取得金額円, 円換算評価額, 円換算評価損益]
+      if(yens.length>=4 && yens[3]>0)
+        out.push({ name, code, value:yens[3], cost:yens[2], cat:"us", acct:"外国株式", qty:qty||0 });
+      i=j-1;   // 次銘柄の直前（名前行）へ
+      continue;
+    }
+
+    // 外貨建債券: ヘッダー語・数値・USD・ティッカー以外の行を銘柄名とみなす
+    if(mode==="bond"){
+      if(HEADER.test(ln) || usdOf(ln)!==null || yenOf(ln)!==null || plainNum(ln)!==null || MKT.test(ln)) continue;
+      const name=nameOf(ln); const nums=[]; let valYen=null, j=i+1;
+      for(; j<lines.length; j++){
+        const l=lines[j];
+        if(/^預り金/.test(l) || HEADER.test(l)) break;
+        const y=yenOf(l); if(y!==null){ valYen=y; continue; }   // 円換算評価額
+        const u=usdOf(l); if(u!==null){ nums.push(u); continue; }
+        const n=plainNum(l); if(n!==null){ nums.push(n); continue; }
+        break;   // 次の銘柄名などで終了
+      }
+      // nums = [保有額面USD, 取得単価, 取得為替, 外貨建評価額USD]
+      if(valYen>0){
+        const cost = nums.length>=3 ? Math.round(nums[0]*nums[1]/100*nums[2]) : valYen;
+        out.push({ name, code:"債券", value:valYen, cost:cost>0?cost:valYen, cat:"bond", acct:"外貨建債券" });
+      }
+      i=j-1;
+      continue;
+    }
+
+    // 預り金: 通貨名の行を起点に、円換算評価額を拾う
+    if(mode==="cash"){
+      if(HEADER.test(ln) || usdOf(ln)!==null || yenOf(ln)!==null || plainNum(ln)!==null) continue;
+      const cur=nameOf(ln); let valYen=null, j=i+1;
+      for(; j<lines.length; j++){
+        const l=lines[j];
+        const y=yenOf(l); if(y!==null){ valYen=y; break; }   // 円換算評価額を拾って終了
+        if(MKT.test(l)) break;
+      }
+      if(valYen>0) out.push({ name:cur+"（現金）", code:"現金", value:valYen, cost:valYen, cat:"cash", acct:"外貨預り金" });
+      i=j;
+      continue;
+    }
+  }
+  out.forEach(d=>d.broker="SBI");
   return out;
 }
 
@@ -475,7 +591,7 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
     const qtyTxt = (d.code!=="group"&&d.code!=="現金"&&d.qty>0)
       ? `・${fmt(d.qty)}${d.cat==="fund"?"口":"株"}` : "";
     const sub = d.code==="group"?d.count+"銘柄"
-      :(d.code==="投信"?"投資信託":(d.code==="現金"?"外貨預り金":"証券コード "+esc(d.code)))
+      :(d.code==="投信"?"投資信託":d.code==="現金"?"外貨預り金":d.code==="債券"?"外貨建債券":"証券コード "+esc(d.code))
         +qtyTxt
         +(d.multi?` <em class="bk bk-both">合計</em>`
           :(d.broker?` <em class="bk bk-${d.broker==="SBI"?"sbi":d.broker==="楽天"?"rk":"both"}">${d.broker}</em>`:""));
@@ -630,32 +746,69 @@ document.getElementById("file").addEventListener("change",async(e)=>{
       const kind=text.includes("保有商品詳細")?"楽天":(text.includes("評価額_円換算")?"SBI外国株":"SBI");
       if(!parsed.length){ failed.push(`${f.name}（銘柄0件）`); continue; }  // 空の読み込みで既存データを消さない
       const fd=fileDate(f.name,text);   // ファイル名・内容から基準日を推定
+      const dummy=/dummy|demo|sample/i.test(f.name);   // デモ用ファイルは推移に記録しない
       LOADED.set(kind,{
         label:`${f.name}（${kind}:${parsed.length}件）`,
-        rows:parsed, date:fd,
+        rows:parsed, date:fd, dummy,
         weak:fd?null:(f.lastModified?isoLocal(f.lastModified):null)
       });
     }catch(err){ failed.push(`${f.name}（読込失敗）`); }
   }
-  // 読み込み済みの全種別からデータを再構成
+  rebuildFromLoaded(failed);   // 蓄積した全種別から再集計
+  e.target.value="";
+});
+
+// LOADED（種別ごとの読み込み結果）からポートフォリオを再構成する共通処理
+function rebuildFromLoaded(failed){
+  failed=failed||[];
   RAW=[]; const labels=[], strong=[], weak=[];
   for(const v of LOADED.values()){
     RAW=RAW.concat(v.rows); labels.push(v.label);
     if(v.date) strong.push(v.date); else if(v.weak) weak.push(v.weak);
   }
   loadedNames=labels.concat(failed);
+  const srcEl=document.getElementById("src");
   if(RAW.length){
     setData(RAW);
+    const anyDummy=[...LOADED.values()].some(v=>v.dummy);   // 1つでもデモなら推移に記録しない
     const dataDate=strong.length ? strong.reduce((a,b)=>a>b?a:b)
                  : (weak.length ? weak.reduce((a,b)=>a>b?a:b) : null);
-    saveSnapshot(dataDate);              // 資産推移にデータ基準日で記録
+    if(!anyDummy) saveSnapshot(dataDate);   // 資産推移にデータ基準日で記録（デモ時はスキップ）
     srcEl.textContent=loadedNames.join(" / ")
-      +(dataDate?`｜基準日 ${dataDate.replace(/-/g,"/")}`:"");
+      +(anyDummy?"｜デモ（推移に記録しません）":(dataDate?`｜基準日 ${dataDate.replace(/-/g,"/")}`:""));
     srcEl.style.color="#dfe3ea";
   }else{
     srcEl.textContent=failed.length?failed.join(" / "):"保有銘柄を検出できませんでした";
   }
-  e.target.value="";
+}
+
+// SBI外国株の画面コピーを取り込む（貼り付けモーダルから呼ぶ）
+function importForeignPaste(text){
+  const parsed=parseSBIForeignPaste(text);
+  if(!parsed.length) return 0;
+  const dummy=/dummy|demo|sample/i.test(text);
+  LOADED.set("SBI外国株",{
+    label:`貼り付け（SBI外国株:${parsed.length}件）`,
+    rows:parsed, date:null, dummy,
+    weak:isoLocal()   // 画面コピーには日付が無いので今日を基準日に
+  });
+  rebuildFromLoaded([]);
+  return parsed.length;
+}
+
+// SBI外国株 貼り付けモーダル
+const pasteModal=document.getElementById("pasteModal");
+const pasteArea=document.getElementById("pasteArea");
+document.getElementById("pasteBtn").addEventListener("click",()=>{
+  pasteArea.value=""; pasteModal.hidden=false; pasteArea.focus();
+});
+document.getElementById("pasteClose").addEventListener("click",()=>{ pasteModal.hidden=true; });
+pasteModal.addEventListener("click",e=>{ if(e.target===pasteModal) pasteModal.hidden=true; });  // 背景クリックで閉じる
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!pasteModal.hidden) pasteModal.hidden=true; });
+document.getElementById("pasteRun").addEventListener("click",()=>{
+  const n=importForeignPaste(pasteArea.value);
+  if(n>0){ pasteModal.hidden=true; }
+  else alert("SBI外国株の保有情報を読み取れませんでした。\n外国株「保有証券一覧」画面の一覧部分をコピーして貼り付けてください。");
 });
 
 // データリセット
@@ -885,9 +1038,9 @@ document.querySelectorAll(".hseg button").forEach(b=>{
   });
 });
 
-// グラフ上のホバーで縦線カーソル＋詳細バー更新
+// グラフ上のホバーで縦線カーソル＋詳細バー更新＋カード表示
 histSvg.addEventListener("mousemove",e=>{
-  if(!HPTS.length) return;
+  if(!HPTS.length){ hideTip(); return; }
   const r=histSvg.getBoundingClientRect();
   const x=(e.clientX-r.left)/r.width*1040;
   let best=HPTS[0];
@@ -896,14 +1049,41 @@ histSvg.addEventListener("mousemove",e=>{
   if(ch){ ch.setAttribute("x1",best.x); ch.setAttribute("x2",best.x); ch.style.display=""; }
   if(cd){ cd.setAttribute("cx",best.x); cd.setAttribute("cy",best.y); cd.style.display=""; }
   histShow(best.h);
+  tipEl.innerHTML=histTipHTML(best.h);   // マウス位置にカード表示
+  tipEl.style.display="block";
+  moveTip(e);
 });
 histSvg.addEventListener("mouseleave",()=>{
   const ch=document.getElementById("hCross"), cd=document.getElementById("hCursorDot");
   if(ch) ch.style.display="none";
   if(cd) cd.style.display="none";
+  hideTip();
   const f=histFiltered();
   histShow(f[f.length-1]||null);
 });
+
+// 特定日の推移記録を削除（デモ記録の除去用）
+function delHistoryDay(day){
+  const h=loadHist();
+  if(!h.some(x=>x.date===day)) return false;
+  localStorage.setItem(HIST_KEY, JSON.stringify(h.filter(x=>x.date!==day)));
+  return true;
+}
+// URLに ?del=YYYY-MM-DD があれば、その日の記録を確認のうえ削除する
+// 例）portfolio_app.html?del=2026-07-22
+(function(){
+  const m=location.search.match(/[?&]del=(\d{4}-\d{2}-\d{2})/);
+  if(!m) return;
+  const day=m[1];
+  if(loadHist().some(x=>x.date===day)){
+    if(confirm(day+" の資産推移の記録を削除しますか？")){
+      delHistoryDay(day);
+      alert(day+" の記録を削除しました。");
+    }
+  }else{
+    alert(day+" の記録は見つかりませんでした（すでに削除済みかもしれません）。");
+  }
+})();
 
 // 初期表示は空（推移は保存済みの記録を表示）
 setData([]);

@@ -174,10 +174,16 @@
   }
   .stat{flex:1;min-width:150px;background:linear-gradient(180deg,#171b29,#12141f);
     border:1px solid var(--line);border-radius:16px;padding:14px 18px;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    container-type:inline-size;}
   .stat .lab{font-size:11.5px;color:var(--muted);margin-bottom:6px;letter-spacing:.08em;}
-  .stat .num{font-size:22px;font-weight:800;font-family:"Sora","Zen Kaku Gothic New",sans-serif;letter-spacing:-.01em;}
-  .stat .num.sm{font-size:17px;}
+  /* stat幅に応じて自動縮小し、桁が増えても見切れない */
+  .stat .num{font-size:clamp(15px,13cqw,22px);font-weight:800;
+    font-family:"Sora","Zen Kaku Gothic New",sans-serif;letter-spacing:-.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stat .num.sm{font-size:clamp(14px,11.5cqw,18px);}
+  /* 総資産評価額は幅を独占して桁が多くても大きく見せる */
+  .stat:first-child{flex-basis:100%;}
   .stat:first-child .num{background:linear-gradient(120deg,#f6e3a9,#d9ab4f);
     -webkit-background-clip:text;background-clip:text;color:transparent;}
 
@@ -274,6 +280,27 @@
     font-size:12px;color:var(--muted);line-height:1.9;}
   .tip-r b{font-family:"Sora","Zen Kaku Gothic New",sans-serif;
     font-size:12.5px;color:#e8ebf2;font-weight:700;}
+
+  /* ---- 貼り付け取り込みモーダル ---- */
+  .modal{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,4,8,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+  .modal[hidden]{display:none;}
+  .modal-box{width:min(700px,92vw);max-height:88vh;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#121627,#0c0e16);border:1px solid var(--line);
+    border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 20px;font-size:15px;font-weight:700;color:#e8ebf2;
+    border-bottom:1px solid var(--line-soft);}
+  .modal-x{background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1;padding:0 4px;}
+  .modal-x:hover{color:#fff;}
+  .modal-desc{padding:14px 20px 0;font-size:12.5px;color:var(--muted);line-height:1.8;}
+  .modal-desc b{color:var(--gold);font-weight:700;}
+  .modal-box textarea{margin:14px 20px;min-height:220px;resize:vertical;
+    background:#0a0c12;border:1px solid var(--line);border-radius:12px;
+    color:var(--text);font-family:"IBM Plex Mono",monospace;font-size:12px;line-height:1.6;
+    padding:12px;outline:none;}
+  .modal-box textarea:focus{border-color:rgba(227,196,119,.5);}
+  .modal-foot{padding:0 20px 18px;display:flex;justify-content:flex-end;gap:10px;}
 
   @media(max-width:980px){
     .grid{grid-template-columns:1fr;}
