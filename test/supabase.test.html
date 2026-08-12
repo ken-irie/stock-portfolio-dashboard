@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>supabase.js テスト</title>
+<style>
+  body{background:#12151c;color:#e8ebf2;font-family:monospace;padding:24px;line-height:1.7;}
+  .ok{color:#6fcf97;} .ng{color:#ff8a8a;}
+  h1{font-size:16px;} #sum{font-size:15px;font-weight:700;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<h1>supabase.js テスト</h1>
+<div id="sum">実行中…</div>
+<pre id="out"></pre>
+<!-- sbStatus() の書き込み先。本番のカードヘッダと同じid -->
+<span id="dbStat" hidden></span>
+
+<script src="../supabase.js"></script>
+<script>
+// ---- 最小のテストハーネス ----
+const TESTS=[];
+function test(name, fn){ TESTS.push({name, fn}); }
+function assert(cond, msg){ if(!cond) throw new Error(msg||"assertion failed"); }
+function eq(actual, expected, msg){
+  const a=JSON.stringify(actual), b=JSON.stringify(expected);
+  if(a!==b) throw new Error((msg?msg+": ":"")+"expected "+b+" but got "+a);
+}
+// fetchのモック。responses[i] が i回目の応答になる
+function mockFetch(responses){
+  const calls=[];
+  const fn=async (url, opts)=>{
+    const r=responses[calls.length] || {};
+    calls.push({url:String(url), method:(opts&&opts.method)||"GET",
+                headers:(opts&&opts.headers)||{}, body:(opts&&opts.body)||null,
+                signal:(opts&&opts.signal)||null});
+    if(r.throw) throw new Error(r.throw);
+    return {
+      ok: r.ok!==false,
+      status: r.status||200,
+      json: async()=> r.body!==undefined ? r.body : [],
+      text: async()=> JSON.stringify(r.body!==undefined ? r.body : [])
+    };
+  };
+  fn.calls=calls;
+  return fn;
+}
+// テストごとに設定とfetchを入れ替え、終わったら必ず戻す
+async function withEnv(config, responses, fn){
+  const oldCfg=window.SUPABASE_CONFIG, oldFetch=window.fetch;
+  window.SUPABASE_CONFIG=config;
+  const mf=mockFetch(responses||[]);
+  window.fetch=mf;
+  try{ return await fn(mf); }
+  finally{ window.SUPABASE_CONFIG=oldCfg; window.fetch=oldFetch; }
+}
+const CFG={url:"https://demo.supabase.co", key:"testkey"};
+const statText=()=>document.getElementById("dbStat").textContent;
+
+// === tests ===
+
+test("sbEnabled: 設定が無ければfalse", async()=>{
+  await withEnv(undefined, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: urlが空ならfalse", async()=>{
+  await withEnv({url:"", key:"k"}, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: keyが空ならfalse", async()=>{
+  await withEnv({url:"https://demo.supabase.co", key:""}, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: url/keyが揃っていればtrue", async()=>{
+  await withEnv(CFG, [], async()=>{ eq(sbEnabled(), true); });
+});
+
+test("sbStatus: 3状態で文言とclassが変わる", async()=>{
+  const el=document.getElementById("dbStat");
+  sbStatus("unset"); eq(el.textContent, "DB未設定"); eq(el.className, "dbstat unset");
+  sbStatus("ok");    eq(el.textContent, "DB同期済"); eq(el.className, "dbstat ok");
+  sbStatus("error"); eq(el.textContent, "DB同期失敗"); eq(el.className, "dbstat error");
+});
+
+// === /tests ===
+
+(async function run(){
+  const out=document.getElementById("out");
+  let pass=0, fail=0; const lines=[];
+  for(const t of TESTS){
+    try{ await t.fn(); pass++; lines.push('<span class="ok">PASS</span> '+t.name); }
+    catch(e){ fail++; lines.push('<span class="ng">FAIL</span> '+t.name+'\n       '+e.message); }
+  }
+  out.innerHTML=lines.join("\n");
+  document.getElementById("sum").innerHTML =
+    fail===0 ? '<span class="ok">ALL PASS ('+pass+')</span>'
+             : '<span class="ng">'+fail+' FAILED</span> / '+pass+' passed';
+  document.title = (fail===0?"ALL PASS":"FAILED")+" - supabase.js テスト";
+})();
+</script>
+</body>
+</html>
