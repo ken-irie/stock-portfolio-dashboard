@@ -82,6 +82,72 @@ test("sbStatus: 3状態で文言とclassが変わる", async()=>{
   sbStatus("error"); eq(el.textContent, "DB同期失敗"); eq(el.className, "dbstat error");
 });
 
+test("sbLoadHistory: 取得結果を{date,total,cost}の配列に変換する", async()=>{
+  const body=[{snapshot_date:"2026-08-01", total_value:"1000", total_cost:"800"},
+              {snapshot_date:"2026-08-02", total_value:"1100", total_cost:"800"}];
+  await withEnv(CFG, [{body}], async()=>{
+    const r=await sbLoadHistory();
+    eq(r, [{date:"2026-08-01", total:1000, cost:800},
+           {date:"2026-08-02", total:1100, cost:800}]);
+    eq(statText(), "DB同期済");
+  });
+});
+
+test("sbLoadHistory: URLに日付昇順のクエリが付く", async()=>{
+  await withEnv(CFG, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    eq(mf.calls.length, 1);
+    eq(mf.calls[0].url,
+       "https://demo.supabase.co/rest/v1/snapshots?select=snapshot_date,total_value,total_cost&order=snapshot_date.asc");
+    eq(mf.calls[0].method, "GET");
+  });
+});
+
+test("sbLoadHistory: 認証ヘッダとタイムアウトが付く", async()=>{
+  await withEnv(CFG, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    const h=mf.calls[0].headers;
+    eq(h["apikey"], "testkey");
+    eq(h["Authorization"], "Bearer testkey");
+    eq(h["Content-Type"], "application/json");
+    assert(mf.calls[0].signal, "AbortSignalが渡されていない");
+  });
+});
+
+test("sbLoadHistory: 末尾スラッシュ付きのurlでも正しく結合する", async()=>{
+  await withEnv({url:"https://demo.supabase.co/", key:"testkey"}, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    assert(mf.calls[0].url.startsWith("https://demo.supabase.co/rest/v1/snapshots?"),
+           "URLが二重スラッシュになっている: "+mf.calls[0].url);
+  });
+});
+
+test("sbLoadHistory: 4xxならnullを返しステータスが失敗になる", async()=>{
+  await withEnv(CFG, [{ok:false, status:401, body:{message:"unauthorized"}}], async()=>{
+    eq(await sbLoadHistory(), null);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbLoadHistory: fetchが失敗しても例外を投げずnullを返す", async()=>{
+  await withEnv(CFG, [{throw:"network down"}], async()=>{
+    eq(await sbLoadHistory(), null);
+  });
+});
+
+test("sbLoadHistory: 設定が無ければfetchを呼ばずnullを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbLoadHistory(), null);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbLoadHistory: 空配列とnullを区別できる", async()=>{
+  await withEnv(CFG, [{body:[]}], async()=>{
+    eq(await sbLoadHistory(), []);
+  });
+});
+
 // === /tests ===
 
 (async function run(){
