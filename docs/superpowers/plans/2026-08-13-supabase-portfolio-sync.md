@@ -682,6 +682,18 @@ git add supabase.js test/supabase.test.html && git commit -m "sbDeleteDay と sb
 
 ---
 
+### Task 4.5: レビュー指摘の修正（実行中に追加）
+
+`supabase.js` 完成時点のモジュール全体レビューで、`sbSaveSnapshot` だけが「例外を投げない」契約を守れていないことが判明したため追加したタスク。`snap` が nullish、または `snap.rows` に不正な行が混じると `TypeError` を投げ、他の関数のように `false` を返さずに未処理のPromise拒否になっていた。`app.js` から直接呼ぶ前に閉じる。
+
+- [x] `sbSaveSnapshot` の先頭に `if(!snap) return false;` を追加
+- [x] 明細のマッピングを try/catch で包み、失敗時は `sbStatus("error")` して `false` を返す（`sbLoadHistory` と同じ形）
+- [x] テストを2件追加（`snapがnull`、`rowsに不正な行`）→ `ALL PASS (29)`
+
+コミット: `f0da484`
+
+---
+
 ### Task 5: 設定ファイルの雛形とHTML/CSSの配線
 
 **Files:**
@@ -912,7 +924,7 @@ renderHistory();
 
 `test/supabase.test.html` をブラウザで再読込する。
 
-期待: `ALL PASS (27)`（`app.js` は読み込んでいないので影響しないはずだが、念のため）
+期待: `ALL PASS (29)`（`app.js` は読み込んでいないので影響しないはずだが、念のため）
 
 - [ ] **Step 5: Supabase未設定でも壊れないことを確認する**
 
@@ -1120,7 +1132,7 @@ git status --short
 
 ## 完了の定義
 
-- `test/supabase.test.html` が `ALL PASS (27)` を表示する
+- `test/supabase.test.html` が `ALL PASS (29)` を表示する（当初27件＋Task 4.5で追加した2件）
 - `supabase-config.js` が無い状態でも、アプリが従来通り動作する
 - Supabaseを設定した状態で、CSV読込 → DBに保存 → localStorage削除 → 再読込で推移が復元される
 - `git status` に `supabase-config.js` が現れない
