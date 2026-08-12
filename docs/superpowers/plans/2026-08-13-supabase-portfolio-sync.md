@@ -14,6 +14,24 @@
 
 ---
 
+## テストの実行方法
+
+`test/supabase.test.html` は相対パスで `../supabase.js` を読むため、**`file://` で直接開いても動かない環境がある**（エージェントのプレビューは `file://` を data: URL のスナップショットとして描画するので、相対スクリプトが解決されない）。ローカルHTTPサーバー経由で開くこと。
+
+`.claude/launch.json` に設定済みの `portfolio-local`（ポート8734、ルートは `C:\work\02_programs\12_kabu`）を使う。
+
+```
+preview_start { name: "portfolio-local" }
+navigate      { url: "http://localhost:8734/test/supabase.test.html" }
+get_page_text
+```
+
+再実行は同じURLへ `navigate` し直す。結果は1行目に `ALL PASS (N)` または `N FAILED / M passed` と出る。
+
+**キャッシュに注意。** `supabase.js` を編集した直後は、古い内容が実行されて結果が変わらないことがある。HTMLのクエリ文字列を変えても `../supabase.js` は別途キャッシュされるため、それだけでは足りない。**編集後の再実行は `tabs_create` で新しいタブを開き、クエリ文字列も変えて開くこと**（例: `?v=t4a`）。結果が変わらないときは、まず実行されているコードが編集後のものか疑う（`window.sbSaveSnapshot === undefined` などで確認できる）。
+
+人間が確認する場合は、ブラウザで `http://localhost:8734/test/supabase.test.html` を開く。
+
 ## 前提
 
 - 作業ブランチ `supabase-sync` に既にいること。`git branch --show-current` で確認する
@@ -156,13 +174,7 @@ test("sbStatus: 3状態で文言とclassが変わる", async()=>{
 
 - [ ] **Step 2: テストを実行して失敗を確認する**
 
-`test/supabase.test.html` をブラウザで開く。
-
-エージェントで実行する場合:
-```
-preview_start { url: "file:///C:/work/02_programs/12_kabu/test/supabase.test.html" }
-```
-のあと `get_page_text` で結果を読む。
+冒頭「テストの実行方法」の手順で `http://localhost:8734/test/supabase.test.html` を開く。
 
 期待: `5 FAILED / 0 passed`。すべて `sbEnabled is not defined` / `sbStatus is not defined` で落ちる（`supabase.js` がまだ無いため）。
 
@@ -670,6 +682,18 @@ git add supabase.js test/supabase.test.html && git commit -m "sbDeleteDay と sb
 
 ---
 
+### Task 4.5: レビュー指摘の修正（実行中に追加）
+
+`supabase.js` 完成時点のモジュール全体レビューで、`sbSaveSnapshot` だけが「例外を投げない」契約を守れていないことが判明したため追加したタスク。`snap` が nullish、または `snap.rows` に不正な行が混じると `TypeError` を投げ、他の関数のように `false` を返さずに未処理のPromise拒否になっていた。`app.js` から直接呼ぶ前に閉じる。
+
+- [x] `sbSaveSnapshot` の先頭に `if(!snap) return false;` を追加
+- [x] 明細のマッピングを try/catch で包み、失敗時は `sbStatus("error")` して `false` を返す（`sbLoadHistory` と同じ形）
+- [x] テストを2件追加（`snapがnull`、`rowsに不正な行`）→ `ALL PASS (29)`
+
+コミット: `f0da484`
+
+---
+
 ### Task 5: 設定ファイルの雛形とHTML/CSSの配線
 
 **Files:**
@@ -900,7 +924,7 @@ renderHistory();
 
 `test/supabase.test.html` をブラウザで再読込する。
 
-期待: `ALL PASS (27)`（`app.js` は読み込んでいないので影響しないはずだが、念のため）
+期待: `ALL PASS (29)`（`app.js` は読み込んでいないので影響しないはずだが、念のため）
 
 - [ ] **Step 5: Supabase未設定でも壊れないことを確認する**
 
@@ -1108,7 +1132,7 @@ git status --short
 
 ## 完了の定義
 
-- `test/supabase.test.html` が `ALL PASS (27)` を表示する
+- `test/supabase.test.html` が `ALL PASS (29)` を表示する（当初27件＋Task 4.5で追加した2件）
 - `supabase-config.js` が無い状態でも、アプリが従来通り動作する
 - Supabaseを設定した状態で、CSV読込 → DBに保存 → localStorage削除 → 再読込で推移が復元される
 - `git status` に `supabase-config.js` が現れない

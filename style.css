@@ -262,6 +262,10 @@
   }
   .hist-clear:hover{color:#ff8a8a;border-color:#5a3030;background:rgba(192,57,57,.12);}
   #histInfo{margin-left:10px;}
+  #dbStat{margin-left:10px;font-size:11.5px;font-weight:600;}
+  #dbStat.unset{color:var(--muted);opacity:.65;}
+  #dbStat.ok{color:#6fcf97;}
+  #dbStat.error{color:#ff8a8a;}
 
   /* ---- チャートのホバーツールチップ ---- */
   #tip{

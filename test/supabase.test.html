@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>supabase.js テスト</title>
+<style>
+  body{background:#12151c;color:#e8ebf2;font-family:monospace;padding:24px;line-height:1.7;}
+  .ok{color:#6fcf97;} .ng{color:#ff8a8a;}
+  h1{font-size:16px;} #sum{font-size:15px;font-weight:700;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<h1>supabase.js テスト</h1>
+<div id="sum">実行中…</div>
+<pre id="out"></pre>
+<!-- sbStatus() の書き込み先。本番のカードヘッダと同じid -->
+<span id="dbStat" hidden></span>
+
+<script src="../supabase.js"></script>
+<script>
+// ---- 最小のテストハーネス ----
+const TESTS=[];
+function test(name, fn){ TESTS.push({name, fn}); }
+function assert(cond, msg){ if(!cond) throw new Error(msg||"assertion failed"); }
+function eq(actual, expected, msg){
+  const a=JSON.stringify(actual), b=JSON.stringify(expected);
+  if(a!==b) throw new Error((msg?msg+": ":"")+"expected "+b+" but got "+a);
+}
+// fetchのモック。responses[i] が i回目の応答になる
+function mockFetch(responses){
+  const calls=[];
+  const fn=async (url, opts)=>{
+    const r=responses[calls.length] || {};
+    calls.push({url:String(url), method:(opts&&opts.method)||"GET",
+                headers:(opts&&opts.headers)||{}, body:(opts&&opts.body)||null,
+                signal:(opts&&opts.signal)||null});
+    if(r.throw) throw new Error(r.throw);
+    return {
+      ok: r.ok!==false,
+      status: r.status||200,
+      json: async()=> r.body!==undefined ? r.body : [],
+      text: async()=> JSON.stringify(r.body!==undefined ? r.body : [])
+    };
+  };
+  fn.calls=calls;
+  return fn;
+}
+// テストごとに設定とfetchを入れ替え、終わったら必ず戻す
+async function withEnv(config, responses, fn){
+  const oldCfg=window.SUPABASE_CONFIG, oldFetch=window.fetch;
+  window.SUPABASE_CONFIG=config;
+  const mf=mockFetch(responses||[]);
+  window.fetch=mf;
+  try{ return await fn(mf); }
+  finally{ window.SUPABASE_CONFIG=oldCfg; window.fetch=oldFetch; }
+}
+const CFG={url:"https://demo.supabase.co", key:"testkey"};
+const statText=()=>document.getElementById("dbStat").textContent;
+
+// === tests ===
+
+test("sbEnabled: 設定が無ければfalse", async()=>{
+  await withEnv(undefined, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: urlが空ならfalse", async()=>{
+  await withEnv({url:"", key:"k"}, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: keyが空ならfalse", async()=>{
+  await withEnv({url:"https://demo.supabase.co", key:""}, [], async()=>{ eq(sbEnabled(), false); });
+});
+
+test("sbEnabled: url/keyが揃っていればtrue", async()=>{
+  await withEnv(CFG, [], async()=>{ eq(sbEnabled(), true); });
+});
+
+test("sbStatus: 3状態で文言とclassが変わる", async()=>{
+  const el=document.getElementById("dbStat");
+  sbStatus("unset"); eq(el.textContent, "DB未設定"); eq(el.className, "dbstat unset");
+  sbStatus("ok");    eq(el.textContent, "DB同期済"); eq(el.className, "dbstat ok");
+  sbStatus("error"); eq(el.textContent, "DB同期失敗"); eq(el.className, "dbstat error");
+});
+
+test("sbLoadHistory: 取得結果を{date,total,cost}の配列に変換する", async()=>{
+  const body=[{snapshot_date:"2026-08-01", total_value:"1000", total_cost:"800"},
+              {snapshot_date:"2026-08-02", total_value:"1100", total_cost:"800"}];
+  await withEnv(CFG, [{body}], async()=>{
+    const r=await sbLoadHistory();
+    eq(r, [{date:"2026-08-01", total:1000, cost:800},
+           {date:"2026-08-02", total:1100, cost:800}]);
+    eq(statText(), "DB同期済");
+  });
+});
+
+test("sbLoadHistory: URLに日付昇順のクエリが付く", async()=>{
+  await withEnv(CFG, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    eq(mf.calls.length, 1);
+    eq(mf.calls[0].url,
+       "https://demo.supabase.co/rest/v1/snapshots?select=snapshot_date,total_value,total_cost&order=snapshot_date.asc");
+    eq(mf.calls[0].method, "GET");
+  });
+});
+
+test("sbLoadHistory: 認証ヘッダとタイムアウトが付く", async()=>{
+  await withEnv(CFG, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    const h=mf.calls[0].headers;
+    eq(h["apikey"], "testkey");
+    eq(h["Authorization"], "Bearer testkey");
+    eq(h["Content-Type"], "application/json");
+    assert(mf.calls[0].signal, "AbortSignalが渡されていない");
+  });
+});
+
+test("sbLoadHistory: 末尾スラッシュ付きのurlでも正しく結合する", async()=>{
+  await withEnv({url:"https://demo.supabase.co/", key:"testkey"}, [{body:[]}], async(mf)=>{
+    await sbLoadHistory();
+    assert(mf.calls[0].url.startsWith("https://demo.supabase.co/rest/v1/snapshots?"),
+           "URLが二重スラッシュになっている: "+mf.calls[0].url);
+  });
+});
+
+test("sbLoadHistory: 4xxならnullを返しステータスが失敗になる", async()=>{
+  await withEnv(CFG, [{ok:false, status:401, body:{message:"unauthorized"}}], async()=>{
+    eq(await sbLoadHistory(), null);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbLoadHistory: fetchが失敗しても例外を投げずnullを返す", async()=>{
+  await withEnv(CFG, [{throw:"network down"}], async()=>{
+    eq(await sbLoadHistory(), null);
+  });
+});
+
+test("sbLoadHistory: 設定が無ければfetchを呼ばずnullを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbLoadHistory(), null);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbLoadHistory: 空配列とnullを区別できる", async()=>{
+  await withEnv(CFG, [{body:[]}], async()=>{
+    eq(await sbLoadHistory(), []);
+  });
+});
+
+const SNAP={
+  date:"2026-08-13", total:1500, cost:1200,
+  rows:[
+    {name:"トヨタ自動車", code:"7203", value:1000, cost:800, cat:"jp", acct:"特定", qty:100, broker:"SBI"},
+    {name:"現金",         code:"",     value:500,  cost:400}   // broker/acct/qty が無い行
+  ]
+};
+
+test("sbSaveSnapshot: upsert→明細DELETE→明細INSERT の順に3リクエスト出す", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), true);
+    eq(mf.calls.length, 3);
+    eq(mf.calls[0].method, "POST");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots");
+    eq(mf.calls[1].method, "DELETE");
+    eq(mf.calls[1].url, "https://demo.supabase.co/rest/v1/holdings?snapshot_date=eq.2026-08-13");
+    eq(mf.calls[2].method, "POST");
+    eq(mf.calls[2].url, "https://demo.supabase.co/rest/v1/holdings");
+  });
+});
+
+test("sbSaveSnapshot: upsertにmerge-duplicatesヘッダが付く", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    eq(mf.calls[0].headers["Prefer"], "resolution=merge-duplicates,return=minimal");
+  });
+});
+
+test("sbSaveSnapshot: upsertのbodyにupdated_atを含む", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    const b=JSON.parse(mf.calls[0].body);
+    eq(b.snapshot_date, "2026-08-13");
+    eq(b.total_value, 1500);
+    eq(b.total_cost, 1200);
+    assert(/^\d{4}-\d{2}-\d{2}T/.test(b.updated_at), "updated_atがISO形式でない: "+b.updated_at);
+  });
+});
+
+test("sbSaveSnapshot: RAWの行をholdingsの列に写す（欠損はnull）", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    const rows=JSON.parse(mf.calls[2].body);
+    eq(rows.length, 2);
+    eq(rows[0], {snapshot_date:"2026-08-13", name:"トヨタ自動車", code:"7203",
+                 broker:"SBI", acct:"特定", cat:"jp", qty:100, value:1000, cost:800});
+    eq(rows[1], {snapshot_date:"2026-08-13", name:"現金", code:null,
+                 broker:null, acct:null, cat:null, qty:null, value:500, cost:400});
+  });
+});
+
+test("sbSaveSnapshot: upsertが失敗したら後続を実行せずfalseを返す", async()=>{
+  await withEnv(CFG, [{ok:false, status:500}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 1);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbSaveSnapshot: DELETEが失敗したらINSERTせずfalseを返す", async()=>{
+  await withEnv(CFG, [{}, {ok:false, status:500}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 2);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbSaveSnapshot: 成功するとステータスがDB同期済になる", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async()=>{
+    await sbSaveSnapshot(SNAP);
+    eq(statText(), "DB同期済");
+  });
+});
+
+test("sbSaveSnapshot: 明細が空ならINSERTを出さない", async()=>{
+  await withEnv(CFG, [{}, {}], async(mf)=>{
+    eq(await sbSaveSnapshot({date:"2026-08-13", total:0, cost:0, rows:[]}), true);
+    eq(mf.calls.length, 2);
+  });
+});
+
+test("sbSaveSnapshot: 設定が無ければfetchを呼ばずfalseを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbSaveSnapshot: fetchがthrowしても例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [{throw:"network down"}], async()=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbDeleteDay: 指定日のsnapshotsをDELETEする", async()=>{
+  await withEnv(CFG, [{}], async(mf)=>{
+    eq(await sbDeleteDay("2026-08-13"), true);
+    eq(mf.calls[0].method, "DELETE");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots?snapshot_date=eq.2026-08-13");
+    eq(mf.calls[0].headers["Prefer"], "return=minimal");
+  });
+});
+
+test("sbDeleteAll: 無条件DELETEを避けるためフィルタを付ける", async()=>{
+  await withEnv(CFG, [{}], async(mf)=>{
+    eq(await sbDeleteAll(), true);
+    eq(mf.calls[0].method, "DELETE");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots?snapshot_date=gt.1900-01-01");
+  });
+});
+
+test("sbDeleteAll: 失敗したらfalseを返しステータスが失敗になる", async()=>{
+  await withEnv(CFG, [{ok:false, status:500}], async()=>{
+    eq(await sbDeleteAll(), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbDeleteDay/sbDeleteAll: 設定が無ければfetchを呼ばずfalseを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbDeleteDay("2026-08-13"), false);
+    eq(await sbDeleteAll(), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbSaveSnapshot: snapがnullでも例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [], async(mf)=>{
+    eq(await sbSaveSnapshot(null), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbSaveSnapshot: rowsに不正な行があっても例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async()=>{
+    eq(await sbSaveSnapshot({date:"2026-08-13", total:1, cost:1, rows:[null]}), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+// === /tests ===
+
+(async function run(){
+  const out=document.getElementById("out");
+  let pass=0, fail=0; const lines=[];
+  for(const t of TESTS){
+    try{ await t.fn(); pass++; lines.push('<span class="ok">PASS</span> '+t.name); }
+    catch(e){ fail++; lines.push('<span class="ng">FAIL</span> '+t.name+'\n       '+e.message); }
+  }
+  out.innerHTML=lines.join("\n");
+  document.getElementById("sum").innerHTML =
+    fail===0 ? '<span class="ok">ALL PASS ('+pass+')</span>'
+             : '<span class="ng">'+fail+' FAILED</span> / '+pass+' passed';
+  document.title = (fail===0?"ALL PASS":"FAILED")+" - supabase.js テスト";
+})();
+</script>
+</body>
+</html>
