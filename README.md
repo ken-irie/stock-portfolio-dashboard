@@ -10,8 +10,11 @@ SBI証券・楽天証券の保有証券CSVを読み込んで、資産ポート�
 | `portfolio_app.html` | 画面の骨組み |
 | `style.css` | スタイル |
 | `app.js` | ロジック（CSVパース・チャート描画・資産推移） |
+| `sectors.js` | 銘柄のセクター分類 |
+| `supabase.js` | Supabaseへの保存・読み込み（任意） |
+| `supabase-config.js` | Supabaseの接続情報（任意・git管理外） |
 
-3ファイルを同じフォルダに置いて使います。
+同じフォルダに置いて使います。Supabase連携を使わない場合は最初の4ファイルだけで動きます。
 
 ## 使い方
 
@@ -42,8 +45,63 @@ SBI証券・楽天証券の保有証券CSVを読み込んで、資産ポート�
 - 記録の基準日はファイル名の日付（例: `SBI_20260628.csv` → 2026/06/28）から自動取得します
 - 同じ種別のCSVを読み込み直すと最新の内容に置き換わります（二重計上しません）
 
+## Supabase連携（任意）
+
+資産推移と保有明細をSupabase（PostgreSQL）に保存すると、ブラウザのデータを消しても記録が残り、別のPCからも同じ推移を見られます。設定しなければ従来通りブラウザ内だけで完結します。
+
+### セットアップ
+
+1. [Supabase](https://supabase.com/) でプロジェクトを作成する
+2. SQL Editor で以下を実行する
+
+```sql
+create table snapshots (
+  snapshot_date date primary key,
+  total_value   numeric not null,
+  total_cost    numeric not null,
+  updated_at    timestamptz not null default now()
+);
+
+create table holdings (
+  id            bigint generated always as identity primary key,
+  snapshot_date date not null references snapshots(snapshot_date) on delete cascade,
+  name          text   not null,
+  code          text,
+  broker        text,
+  acct          text,
+  cat           text,
+  qty           numeric,
+  value         numeric not null,
+  cost          numeric not null
+);
+
+create index holdings_date_idx on holdings (snapshot_date);
+
+alter table snapshots enable row level security;
+alter table holdings  enable row level security;
+
+create policy "anon all" on snapshots for all to anon using (true) with check (true);
+create policy "anon all" on holdings  for all to anon using (true) with check (true);
+```
+
+3. Project Settings → API から Project URL と anon public key をコピーする
+4. `supabase-config.example.js` を `supabase-config.js` にコピーし、値を貼り付ける
+5. `portfolio_app.html` を開き、資産推移カードに `DB同期済` と出れば接続完了
+
+### 挙動
+
+- CSVを読み込むたびに、その日のスナップショット（日付・資産残高・元本）と保有明細の全銘柄が保存されます。同じ日付を読み直すと上書きされます
+- 起動時にDBから資産推移を読み戻します。DBが空のときはブラウザの記録を残します
+- ポートフォリオ（ドーナツ・銘柄一覧）は起動時は空です。保有明細はDBに保存されますが読み戻しません
+- 「履歴クリア」はSupabaseの記録も削除します
+
+### 注意
+
+`supabase-config.js` は `.gitignore` 対象です。**このファイルをコミットしないでください。** 認証を使わない構成のため、anonキーが漏れると誰でもデータを読み書きできます。別のPCで使うときは手動でファイルを配置してください。
+
 ## プライバシー
 
-- すべての処理はブラウザ内で完結します。外部サーバーへの通信は行いません（Webフォントの読み込みを除く）
+- Supabaseを設定しない場合、すべての処理はブラウザ内で完結します。外部サーバーへの通信は行いません（Webフォントの読み込みを除く）
+- Supabaseを設定した場合のみ、資産推移と保有明細が自分のSupabaseプロジェクトへ送信されます
 - 資産推移の記録はブラウザのlocalStorageに保存されます。「履歴クリア」ボタンでいつでも削除できます
 - 保有明細CSVなどの個人データは `.gitignore` によりリポジトリへコミットされない設定になっています
