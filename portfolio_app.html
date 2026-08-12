@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260722f">
+<link rel="stylesheet" href="style.css?v=20260813a">
 </head>
 <body>
 
@@ -99,7 +99,7 @@
   <div class="hist-wrap">
     <div class="card">
       <div class="card-title">
-        <span>資産推移 <small id="histInfo"></small></span>
+        <span>資産推移 <small id="histInfo"></small><small id="dbStat" class="dbstat"></small></span>
         <button class="hist-clear" id="histClear" title="推移の記録をすべて削除">履歴クリア</button>
       </div>
       <div class="hist-stat">
@@ -122,7 +122,9 @@
     </div>
   </div>
 
-<script src="sectors.js?v=20260722f"></script>
-<script src="app.js?v=20260722f"></script>
+<script src="sectors.js?v=20260813a"></script>
+<script src="supabase-config.js"></script>
+<script src="supabase.js?v=20260813a"></script>
+<script src="app.js?v=20260813a"></script>
 </body>
 </html>
