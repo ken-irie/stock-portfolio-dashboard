@@ -944,6 +944,20 @@ git add app.js && git commit -m "app.js からSupabaseの保存・読み戻し�
 
 ---
 
+### Task 6.5: 起動時の競合の修正（実行中に追加）
+
+Task 6のレビューで見つかった競合。`hydrateFromDB` がDB応答を待っている間にCSVを読み込むと、遅れて返ってきた（保存前の）DBの内容でlocalStorageが上書きされ、読み込んだばかりの当日分が画面から消える。DBへの書き込み自体は失われないが、ユーザーにはデータが消えたように見える。
+
+- [x] `HIST_KEY` の直後に `let histLocalWrite=false;` を追加
+- [x] `saveSnapshot` の末尾で `histLocalWrite=true;` を立てる
+- [x] `hydrateFromDB` の **await の後**に `if(histLocalWrite) return;` を追加（競合はawait中に起きるので、await前のチェックでは意味がない）
+
+検証: 応答を2.5秒遅らせたSupabaseスタブを使い、応答待ちの最中にCSVを読み込む再現手順で、修正前は当日分が消えること・修正後は残ることを実測で確認した。
+
+コミット: `54ee0be`
+
+---
+
 ### Task 7: READMEの更新
 
 **Files:**
