@@ -824,7 +824,7 @@ document.getElementById("reset").addEventListener("click",()=>{
 
 // ===== 資産推移（CSV読込時にブラウザへ自動記録） =====
 const HIST_KEY="kabu_asset_history_v1";
-let histLocalWrite=false;   // 起動後にCSVを読み込んだか（DBからの読み戻しで上書きしないため）
+let histLocalWrite=false;   // 起動後に手元で履歴を書き換えたか（DBからの読み戻しで上書きしないため）
 const histSvg=document.getElementById("histSvg");
 
 function loadHist(){
@@ -1028,6 +1028,7 @@ document.getElementById("histClear").addEventListener("click",()=>{
   if(confirm("資産推移の記録をすべて削除しますか？（Supabaseの記録も削除されます）")){
     localStorage.removeItem(HIST_KEY);
     renderHistory();
+    histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     sbDeleteAll();
   }
 });
@@ -1071,6 +1072,7 @@ function delHistoryDay(day){
   const h=loadHist();
   if(!h.some(x=>x.date===day)) return false;
   localStorage.setItem(HIST_KEY, JSON.stringify(h.filter(x=>x.date!==day)));
+  histLocalWrite=true;                             // 読み戻しで消した記録が復活しないようにする
   sbDeleteDay(day);
   return true;
 }
