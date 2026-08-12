@@ -243,6 +243,38 @@ test("sbSaveSnapshot: fetchがthrowしても例外を投げずfalseを返す", a
   });
 });
 
+test("sbDeleteDay: 指定日のsnapshotsをDELETEする", async()=>{
+  await withEnv(CFG, [{}], async(mf)=>{
+    eq(await sbDeleteDay("2026-08-13"), true);
+    eq(mf.calls[0].method, "DELETE");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots?snapshot_date=eq.2026-08-13");
+    eq(mf.calls[0].headers["Prefer"], "return=minimal");
+  });
+});
+
+test("sbDeleteAll: 無条件DELETEを避けるためフィルタを付ける", async()=>{
+  await withEnv(CFG, [{}], async(mf)=>{
+    eq(await sbDeleteAll(), true);
+    eq(mf.calls[0].method, "DELETE");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots?snapshot_date=gt.1900-01-01");
+  });
+});
+
+test("sbDeleteAll: 失敗したらfalseを返しステータスが失敗になる", async()=>{
+  await withEnv(CFG, [{ok:false, status:500}], async()=>{
+    eq(await sbDeleteAll(), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbDeleteDay/sbDeleteAll: 設定が無ければfetchを呼ばずfalseを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbDeleteDay("2026-08-13"), false);
+    eq(await sbDeleteAll(), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
 // === /tests ===
 
 (async function run(){

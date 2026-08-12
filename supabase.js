@@ -124,10 +124,34 @@
     return true;
   }
 
+  // 指定日のスナップショットを削除する（holdingsはcascadeで消える）
+  async function sbDeleteDay(date){
+    if(!sbEnabled()) return false;
+    const res=await sbFetch("snapshots?snapshot_date=eq."+date, {
+      method:"DELETE",
+      headers:{"Prefer":"return=minimal"}
+    });
+    sbStatus(res?"ok":"error");
+    return !!res;
+  }
+
+  // 全スナップショットを削除する。PostgRESTは無条件DELETEを拒否するのでフィルタを付ける
+  async function sbDeleteAll(){
+    if(!sbEnabled()) return false;
+    const res=await sbFetch("snapshots?snapshot_date=gt.1900-01-01", {
+      method:"DELETE",
+      headers:{"Prefer":"return=minimal"}
+    });
+    sbStatus(res?"ok":"error");
+    return !!res;
+  }
+
   window.sbEnabled=sbEnabled;
   window.sbStatus=sbStatus;
   window.sbLoadHistory=sbLoadHistory;
   window.sbSaveSnapshot=sbSaveSnapshot;
+  window.sbDeleteDay=sbDeleteDay;
+  window.sbDeleteAll=sbDeleteAll;
 
   // 設定が無いことは起動時点で分かるので、その場で表示しておく
   if(!sbEnabled()) sbStatus("unset");
