@@ -865,6 +865,7 @@ function saveSnapshot(dateStr){
   hist.sort((a,b)=>a.date.localeCompare(b.date));
   try{ localStorage.setItem(HIST_KEY,JSON.stringify(hist)); }catch{}
   renderHistory();
+  sbSaveSnapshot({date:day,total,cost,rows:RAW});   // DB保存は待たない（描画をネットワークに引きずられないため）
 }
 
 let histRange=0;   // 表示期間（月数、0=全期間）
@@ -1022,9 +1023,10 @@ function renderHistory(){
 // 履歴クリア
 document.getElementById("histClear").addEventListener("click",()=>{
   if(!loadHist().length) return;
-  if(confirm("資産推移の記録をすべて削除しますか？")){
+  if(confirm("資産推移の記録をすべて削除しますか？（Supabaseの記録も削除されます）")){
     localStorage.removeItem(HIST_KEY);
     renderHistory();
+    sbDeleteAll();
   }
 });
 
@@ -1067,6 +1069,7 @@ function delHistoryDay(day){
   const h=loadHist();
   if(!h.some(x=>x.date===day)) return false;
   localStorage.setItem(HIST_KEY, JSON.stringify(h.filter(x=>x.date!==day)));
+  sbDeleteDay(day);
   return true;
 }
 // URLに ?del=YYYY-MM-DD があれば、その日の記録を確認のうえ削除する
@@ -1088,3 +1091,13 @@ function delHistoryDay(day){
 // 初期表示は空（推移は保存済みの記録を表示）
 setData([]);
 renderHistory();
+
+// Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
+// 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
+(async function hydrateFromDB(){
+  if(!sbEnabled()) return;          // 未設定時は supabase.js 側で「DB未設定」表示済み
+  const rows=await sbLoadHistory();
+  if(!rows||!rows.length) return;   // 取得失敗、またはDBが空 → localStorageの内容を残す
+  try{ localStorage.setItem(HIST_KEY,JSON.stringify(rows)); }catch{}
+  renderHistory();
+})();
