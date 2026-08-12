@@ -75,9 +75,59 @@
     }
   }
 
+  // スナップショットと保有明細を保存する。
+  // FK制約があるので snapshots upsert → holdings DELETE → holdings INSERT の順は必須。
+  async function sbSaveSnapshot(snap){
+    if(!sbEnabled()) return false;
+    const date=snap.date;
+
+    const up=await sbFetch("snapshots", {
+      method:"POST",
+      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:{
+        snapshot_date:date,
+        total_value:snap.total,
+        total_cost:snap.cost,
+        updated_at:new Date().toISOString()   // default now() はUPDATE時に再適用されないので明示する
+      }
+    });
+    if(!up){ sbStatus("error"); return false; }
+
+    // 差分を取らず、その日の明細を消してから入れ直す（銘柄の増減を考えずに済む）
+    const del=await sbFetch("holdings?snapshot_date=eq."+date, {
+      method:"DELETE",
+      headers:{"Prefer":"return=minimal"}
+    });
+    if(!del){ sbStatus("error"); return false; }
+
+    const rows=(snap.rows||[]).map(r=>({
+      snapshot_date:date,
+      name:r.name,
+      code:r.code||null,
+      broker:r.broker||null,
+      acct:r.acct||null,
+      cat:r.cat||null,
+      qty:(r.qty===undefined||r.qty===null)?null:r.qty,
+      value:r.value,
+      cost:r.cost
+    }));
+    if(rows.length){
+      const ins=await sbFetch("holdings", {
+        method:"POST",
+        headers:{"Prefer":"return=minimal"},
+        body:rows
+      });
+      if(!ins){ sbStatus("error"); return false; }
+    }
+
+    sbStatus("ok");
+    return true;
+  }
+
   window.sbEnabled=sbEnabled;
   window.sbStatus=sbStatus;
   window.sbLoadHistory=sbLoadHistory;
+  window.sbSaveSnapshot=sbSaveSnapshot;
 
   // 設定が無いことは起動時点で分かるので、その場で表示しておく
   if(!sbEnabled()) sbStatus("unset");

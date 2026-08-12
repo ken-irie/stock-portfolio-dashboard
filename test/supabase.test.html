@@ -148,6 +148,101 @@ test("sbLoadHistory: 空配列とnullを区別できる", async()=>{
   });
 });
 
+const SNAP={
+  date:"2026-08-13", total:1500, cost:1200,
+  rows:[
+    {name:"トヨタ自動車", code:"7203", value:1000, cost:800, cat:"jp", acct:"特定", qty:100, broker:"SBI"},
+    {name:"現金",         code:"",     value:500,  cost:400}   // broker/acct/qty が無い行
+  ]
+};
+
+test("sbSaveSnapshot: upsert→明細DELETE→明細INSERT の順に3リクエスト出す", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), true);
+    eq(mf.calls.length, 3);
+    eq(mf.calls[0].method, "POST");
+    eq(mf.calls[0].url, "https://demo.supabase.co/rest/v1/snapshots");
+    eq(mf.calls[1].method, "DELETE");
+    eq(mf.calls[1].url, "https://demo.supabase.co/rest/v1/holdings?snapshot_date=eq.2026-08-13");
+    eq(mf.calls[2].method, "POST");
+    eq(mf.calls[2].url, "https://demo.supabase.co/rest/v1/holdings");
+  });
+});
+
+test("sbSaveSnapshot: upsertにmerge-duplicatesヘッダが付く", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    eq(mf.calls[0].headers["Prefer"], "resolution=merge-duplicates,return=minimal");
+  });
+});
+
+test("sbSaveSnapshot: upsertのbodyにupdated_atを含む", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    const b=JSON.parse(mf.calls[0].body);
+    eq(b.snapshot_date, "2026-08-13");
+    eq(b.total_value, 1500);
+    eq(b.total_cost, 1200);
+    assert(/^\d{4}-\d{2}-\d{2}T/.test(b.updated_at), "updated_atがISO形式でない: "+b.updated_at);
+  });
+});
+
+test("sbSaveSnapshot: RAWの行をholdingsの列に写す（欠損はnull）", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    const rows=JSON.parse(mf.calls[2].body);
+    eq(rows.length, 2);
+    eq(rows[0], {snapshot_date:"2026-08-13", name:"トヨタ自動車", code:"7203",
+                 broker:"SBI", acct:"特定", cat:"jp", qty:100, value:1000, cost:800});
+    eq(rows[1], {snapshot_date:"2026-08-13", name:"現金", code:null,
+                 broker:null, acct:null, cat:null, qty:null, value:500, cost:400});
+  });
+});
+
+test("sbSaveSnapshot: upsertが失敗したら後続を実行せずfalseを返す", async()=>{
+  await withEnv(CFG, [{ok:false, status:500}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 1);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbSaveSnapshot: DELETEが失敗したらINSERTせずfalseを返す", async()=>{
+  await withEnv(CFG, [{}, {ok:false, status:500}], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 2);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbSaveSnapshot: 成功するとステータスがDB同期済になる", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async()=>{
+    await sbSaveSnapshot(SNAP);
+    eq(statText(), "DB同期済");
+  });
+});
+
+test("sbSaveSnapshot: 明細が空ならINSERTを出さない", async()=>{
+  await withEnv(CFG, [{}, {}], async(mf)=>{
+    eq(await sbSaveSnapshot({date:"2026-08-13", total:0, cost:0, rows:[]}), true);
+    eq(mf.calls.length, 2);
+  });
+});
+
+test("sbSaveSnapshot: 設定が無ければfetchを呼ばずfalseを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbSaveSnapshot: fetchがthrowしても例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [{throw:"network down"}], async()=>{
+    eq(await sbSaveSnapshot(SNAP), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
 // === /tests ===
 
 (async function run(){
