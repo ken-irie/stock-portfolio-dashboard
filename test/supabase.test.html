@@ -275,6 +275,20 @@ test("sbDeleteDay/sbDeleteAll: 設定が無ければfetchを呼ばずfalseを返
   });
 });
 
+test("sbSaveSnapshot: snapがnullでも例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [], async(mf)=>{
+    eq(await sbSaveSnapshot(null), false);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbSaveSnapshot: rowsに不正な行があっても例外を投げずfalseを返す", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async()=>{
+    eq(await sbSaveSnapshot({date:"2026-08-13", total:1, cost:1, rows:[null]}), false);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
 // === /tests ===
 
 (async function run(){

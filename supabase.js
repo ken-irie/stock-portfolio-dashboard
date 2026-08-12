@@ -78,6 +78,7 @@
   // スナップショットと保有明細を保存する。
   // FK制約があるので snapshots upsert → holdings DELETE → holdings INSERT の順は必須。
   async function sbSaveSnapshot(snap){
+    if(!snap) return false;
     if(!sbEnabled()) return false;
     const date=snap.date;
 
@@ -100,17 +101,24 @@
     });
     if(!del){ sbStatus("error"); return false; }
 
-    const rows=(snap.rows||[]).map(r=>({
-      snapshot_date:date,
-      name:r.name,
-      code:r.code||null,
-      broker:r.broker||null,
-      acct:r.acct||null,
-      cat:r.cat||null,
-      qty:(r.qty===undefined||r.qty===null)?null:r.qty,
-      value:r.value,
-      cost:r.cost
-    }));
+    let rows;
+    try{
+      rows=(snap.rows||[]).map(r=>({
+        snapshot_date:date,
+        name:r.name,
+        code:r.code||null,
+        broker:r.broker||null,
+        acct:r.acct||null,
+        cat:r.cat||null,
+        qty:(r.qty===undefined||r.qty===null)?null:r.qty,
+        value:r.value,
+        cost:r.cost
+      }));
+    }catch(e){
+      console.warn("[supabase] invalid holdings row", e);
+      sbStatus("error");
+      return false;
+    }
     if(rows.length){
       const ins=await sbFetch("holdings", {
         method:"POST",
