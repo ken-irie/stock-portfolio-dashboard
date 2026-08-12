@@ -28,6 +28,8 @@ get_page_text
 
 再実行は同じURLへ `navigate` し直す。結果は1行目に `ALL PASS (N)` または `N FAILED / M passed` と出る。
 
+**キャッシュに注意。** `supabase.js` を編集した直後は、サーバーが古い内容を返して結果が変わらないことがある。クエリ文字列を毎回変えて開くこと（例: `?v=t3`）。結果が変わらないときは、まず配信されている中身が編集後のものか疑う。
+
 人間が確認する場合は、ブラウザで `http://localhost:8734/test/supabase.test.html` を開く。
 
 ## 前提
