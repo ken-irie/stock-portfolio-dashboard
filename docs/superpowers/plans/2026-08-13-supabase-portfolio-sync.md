@@ -14,6 +14,22 @@
 
 ---
 
+## テストの実行方法
+
+`test/supabase.test.html` は相対パスで `../supabase.js` を読むため、**`file://` で直接開いても動かない環境がある**（エージェントのプレビューは `file://` を data: URL のスナップショットとして描画するので、相対スクリプトが解決されない）。ローカルHTTPサーバー経由で開くこと。
+
+`.claude/launch.json` に設定済みの `portfolio-local`（ポート8734、ルートは `C:\work\02_programs\12_kabu`）を使う。
+
+```
+preview_start { name: "portfolio-local" }
+navigate      { url: "http://localhost:8734/test/supabase.test.html" }
+get_page_text
+```
+
+再実行は同じURLへ `navigate` し直す。結果は1行目に `ALL PASS (N)` または `N FAILED / M passed` と出る。
+
+人間が確認する場合は、ブラウザで `http://localhost:8734/test/supabase.test.html` を開く。
+
 ## 前提
 
 - 作業ブランチ `supabase-sync` に既にいること。`git branch --show-current` で確認する
@@ -156,13 +172,7 @@ test("sbStatus: 3状態で文言とclassが変わる", async()=>{
 
 - [ ] **Step 2: テストを実行して失敗を確認する**
 
-`test/supabase.test.html` をブラウザで開く。
-
-エージェントで実行する場合:
-```
-preview_start { url: "file:///C:/work/02_programs/12_kabu/test/supabase.test.html" }
-```
-のあと `get_page_text` で結果を読む。
+冒頭「テストの実行方法」の手順で `http://localhost:8734/test/supabase.test.html` を開く。
 
 期待: `5 FAILED / 0 passed`。すべて `sbEnabled is not defined` / `sbStatus is not defined` で落ちる（`supabase.js` がまだ無いため）。
 
