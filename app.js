@@ -7,6 +7,11 @@ let ALL = [];               // 個別表示用（同名合算後）
 let RAW = [];               // 読み込んだ全銘柄（口座別・合算前）
 let loadedNames = [];       // 読み込み済みファイル名
 let groupMode = "individual"; // individual | sector | economic | account | broker
+const LIST_EMPTY_DEFAULT="CSVを読み込むと、ここに保有銘柄が一覧表示されます";
+let listEmptyMsg=LIST_EMPTY_DEFAULT;   // 銘柄一覧が空のときに出す文言
+let curDate="";                        // いま表示している日付（取得失敗時に選択を戻すため）
+let showSeq=0;                         // 古い応答が新しい表示を上書きしないための連番
+const HIST_BY_DATE=new Map();          // 日付 → 推移エントリ
 let drill = null;             // 展開中のグループキー
 let sortKey = "value";        // value | pl | name
 let sortDir = "desc";         // asc | desc
@@ -578,7 +583,7 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
   const list=document.getElementById("list");
   list.innerHTML="";
   if(!data.length){
-    const msg = ALL.length===0 ? "CSVを読み込むと、ここに保有銘柄が一覧表示されます" : "該当する銘柄はありません";
+    const msg = ALL.length===0 ? listEmptyMsg : "該当する銘柄はありません";
     list.innerHTML=`<div style="padding:48px 24px;text-align:center;color:#8a909c;font-size:14px;">${msg}</div>`;
     return;
   }
@@ -1095,6 +1100,59 @@ function delHistoryDay(day){
 // 初期表示は空（推移は保存済みの記録を表示）
 setData([]);
 renderHistory();
+
+// ===== 日付を選んで過去のポートフォリオを表示する =====
+
+// 推移データから日付セレクタを組み立てる（新しい日付が上）
+function buildDateSelector(hist){
+  const sel=document.getElementById("dateSel");
+  if(!sel) return;
+  if(!sbEnabled()||!hist||!hist.length){ sel.hidden=true; return; }
+  HIST_BY_DATE.clear();
+  const opts=['<option value="">—</option>'];
+  for(let i=hist.length-1;i>=0;i--){          // 新しい日付を上に出す
+    const h=hist[i];
+    HIST_BY_DATE.set(h.date,h);
+    opts.push(`<option value="${h.date}">${h.date}${h.n?"":"（明細なし）"}</option>`);
+  }
+  sel.innerHTML=opts.join("");
+  sel.hidden=false;
+}
+
+// その日の表示を画面に反映する
+function applyDateView(date,rows,h){
+  listEmptyMsg = rows.length ? LIST_EMPTY_DEFAULT
+    : "この日の保有明細は記録されていません。金額は上の資産推移で確認できます";
+  loadedNames=[]; LOADED.clear();   // CSV由来の状態は持ち越さない
+  setData(rows);                    // RAW もここで入れ替わる
+  curDate=date;
+  const sel=document.getElementById("dateSel");
+  if(sel) sel.value=date;
+  const srcEl=document.getElementById("src");
+  srcEl.textContent=date.replace(/-/g,"/")+" の記録（Supabase）";
+  srcEl.style.color="#dfe3ea";
+  histShow(h);                      // 推移カードの詳細バーも同じ日付に合わせる
+}
+
+// 指定日の表示に切り替える
+async function showDate(date){
+  const h=HIST_BY_DATE.get(date);
+  if(!h) return;
+  const seq=++showSeq;
+  if(!h.n){ applyDateView(date,[],h); return; }   // 明細が無い日は取りに行かない
+  const rows=await sbLoadHoldings(date);
+  if(seq!==showSeq) return;                        // より新しい選択が始まっている
+  if(!rows){                                       // 取得失敗 → 表示を壊さず選択を戻す
+    const sel=document.getElementById("dateSel");
+    if(sel) sel.value=curDate;
+    return;
+  }
+  applyDateView(date,rows,h);
+}
+
+document.getElementById("dateSel").addEventListener("change",e=>{
+  if(e.target.value) showDate(e.target.value);
+});
 
 // Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
 // 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
