@@ -778,7 +778,14 @@ function rebuildFromLoaded(failed){
     const anyDummy=[...LOADED.values()].some(v=>v.dummy);   // 1つでもデモなら推移に記録しない
     const dataDate=strong.length ? strong.reduce((a,b)=>a>b?a:b)
                  : (weak.length ? weak.reduce((a,b)=>a>b?a:b) : null);
-    if(!anyDummy) saveSnapshot(dataDate);   // 資産推移にデータ基準日で記録（デモ時はスキップ）
+    showSeq++;                              // 読み戻し中の表示切り替えを無効化する
+    if(!anyDummy){
+      saveSnapshot(dataDate);               // 資産推移にデータ基準日で記録（デモ時はスキップ）
+      curDate=dataDate||isoLocal();
+      buildDateSelector(loadHist());        // 今読み込んだ日付を含めて作り直す
+      const sel=document.getElementById("dateSel");
+      if(sel) sel.value=curDate;
+    }
     srcEl.textContent=loadedNames.join(" / ")
       +(anyDummy?"｜デモ（推移に記録しません）":(dataDate?`｜基準日 ${dataDate.replace(/-/g,"/")}`:""));
     srcEl.style.color="#dfe3ea";
@@ -818,10 +825,15 @@ document.getElementById("pasteRun").addEventListener("click",()=>{
 
 // データリセット
 document.getElementById("reset").addEventListener("click",()=>{
+  showSeq++;                        // 取得中の表示切り替えを無効化する
   RAW=[]; loadedNames=[]; LOADED.clear();
+  listEmptyMsg=LIST_EMPTY_DEFAULT;
+  curDate="";
   setData([]);
   curView="donut";
   document.querySelector(".treemap-btn").textContent="ツリーマップ";
+  const sel=document.getElementById("dateSel");
+  if(sel) sel.value="";
   const srcEl=document.getElementById("src");
   srcEl.textContent="CSV未読み込み";
   srcEl.style.color="";
@@ -867,7 +879,7 @@ function saveSnapshot(dateStr){
   const cost =RAW.reduce((s,d)=>s+d.cost,0);
   const day=dateStr||isoLocal();
   const hist=loadHist().filter(h=>h.date!==day);   // 同日の記録は上書き
-  hist.push({date:day,total,cost});
+  hist.push({date:day,total,cost,n:RAW.length});   // セレクタの「明細なし」判定に使う
   hist.sort((a,b)=>a.date.localeCompare(b.date));
   try{ localStorage.setItem(HIST_KEY,JSON.stringify(hist)); }catch{}
   renderHistory();
@@ -1163,4 +1175,6 @@ document.getElementById("dateSel").addEventListener("change",e=>{
   if(!rows||!rows.length) return;   // 取得失敗、またはDBが空 → localStorageの内容を残す
   try{ localStorage.setItem(HIST_KEY,JSON.stringify(rows)); }catch{}
   renderHistory();
+  buildDateSelector(rows);
+  showDate(rows[rows.length-1].date);   // 最新日を表示する
 })();
