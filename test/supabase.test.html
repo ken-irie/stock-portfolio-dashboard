@@ -16,7 +16,9 @@
 <!-- sbStatus() の書き込み先。本番のカードヘッダと同じid -->
 <span id="dbStat" hidden></span>
 
-<script src="../supabase.js"></script>
+<!-- ブラウザが古い supabase.js を握り続けて誤った結果を出すため、毎回別URLとして読ませる。
+     document.write は後続のパースを止めるので、読み込み順は保たれる。 -->
+<script>document.write('<scr'+'ipt src="../supabase.js?cb='+Date.now()+'"><\/scr'+'ipt>');</script>
 <script>
 // ---- 最小のテストハーネス ----
 const TESTS=[];

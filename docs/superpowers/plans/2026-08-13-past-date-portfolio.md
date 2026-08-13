@@ -25,7 +25,9 @@ navigate      { url: "http://localhost:8734/test/supabase.test.html?v=p1a", tabI
 get_page_text { tabId: "<new>" }
 ```
 
-**キャッシュに注意。** `.js` を編集した直後は古いコードが動くことがある。HTMLのクエリ文字列を変えても `.js` は別途キャッシュされる。**再実行のたびに `tabs_create` で新しいタブを開き、クエリ文字列も変え、`force: true` を付けること。** 結果が変わらないときは、まず実行中のコードが編集後のものか疑う（`sbLoadHoldings` の有無などをページ内で確認できる）。
+**`supabase.js` のキャッシュ対策は済んでいる。** テストページは `document.write` で毎回別URLとして `supabase.js` を読むようにしてあるため、編集内容がそのまま反映される。念のため、結果が想定と違うときは実行中のコードが最新か確認すること（例: `sbLoadHistory.toString().includes('holdings_count')`）。
+
+**`portfolio_app.html` 側は依然キャッシュされる。** そちらを検証するときは後述のiframeハーネスを使う（全スクリプトにユニークなクエリを付ける）。
 
 `portfolio_app.html` の検証も同じサーバー経由で行う。ただし `supabase-config.js` には**本番の認証情報が入っている**ため、そのまま開いてCSVを読み込むとテストデータが本番DBに書き込まれる。**必ず後述のiframeハーネスを使い、偽のエンドポイントに差し替えて検証すること。**
 
