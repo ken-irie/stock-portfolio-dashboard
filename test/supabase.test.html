@@ -298,6 +298,21 @@ test("sbLoadHistory: holdings_countが無い行はn=0になる", async()=>{
   });
 });
 
+test("sbSaveSnapshot: upsertのbodyのholdings_countが明細件数と一致する", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    await sbSaveSnapshot(SNAP);
+    eq(JSON.parse(mf.calls[0].body).holdings_count, 2);
+  });
+});
+
+test("sbSaveSnapshot: 不正な行があるときは1度も通信せずfalseを返す", async()=>{
+  await withEnv(CFG, [{}, {}, {}], async(mf)=>{
+    eq(await sbSaveSnapshot({date:"2026-08-13", total:1, cost:1, rows:[null]}), false);
+    eq(mf.calls.length, 0);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
 // === /tests ===
 
 (async function run(){

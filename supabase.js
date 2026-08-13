@@ -84,25 +84,7 @@
     if(!sbEnabled()) return false;
     const date=snap.date;
 
-    const up=await sbFetch("snapshots", {
-      method:"POST",
-      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
-      body:{
-        snapshot_date:date,
-        total_value:snap.total,
-        total_cost:snap.cost,
-        updated_at:new Date().toISOString()   // default now() はUPDATE時に再適用されないので明示する
-      }
-    });
-    if(!up){ sbStatus("error"); return false; }
-
-    // 差分を取らず、その日の明細を消してから入れ直す（銘柄の増減を考えずに済む）
-    const del=await sbFetch("holdings?snapshot_date=eq."+date, {
-      method:"DELETE",
-      headers:{"Prefer":"return=minimal"}
-    });
-    if(!del){ sbStatus("error"); return false; }
-
+    // 件数をupsertに含めるため、明細の組み立てを先に済ませる
     let rows;
     try{
       rows=(snap.rows||[]).map(r=>({
@@ -121,6 +103,27 @@
       sbStatus("error");
       return false;
     }
+
+    const up=await sbFetch("snapshots", {
+      method:"POST",
+      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:{
+        snapshot_date:date,
+        total_value:snap.total,
+        total_cost:snap.cost,
+        holdings_count:rows.length,
+        updated_at:new Date().toISOString()   // default now() はUPDATE時に再適用されないので明示する
+      }
+    });
+    if(!up){ sbStatus("error"); return false; }
+
+    // 差分を取らず、その日の明細を消してから入れ直す（銘柄の増減を考えずに済む）
+    const del=await sbFetch("holdings?snapshot_date=eq."+date, {
+      method:"DELETE",
+      headers:{"Prefer":"return=minimal"}
+    });
+    if(!del){ sbStatus("error"); return false; }
+
     if(rows.length){
       const ins=await sbFetch("holdings", {
         method:"POST",
