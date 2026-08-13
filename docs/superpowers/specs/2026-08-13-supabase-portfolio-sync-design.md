@@ -79,10 +79,11 @@ Supabase の SQL Editor で実行する。
 
 ```sql
 create table snapshots (
-  snapshot_date date primary key,
-  total_value   numeric not null,
-  total_cost    numeric not null,
-  updated_at    timestamptz not null default now()
+  snapshot_date  date primary key,
+  total_value    numeric not null,
+  total_cost     numeric not null,
+  holdings_count integer not null default 0,   -- 2026-08-13 追加。過去日ポートフォリオ表示で使う
+  updated_at     timestamptz not null default now()
 );
 
 create table holdings (

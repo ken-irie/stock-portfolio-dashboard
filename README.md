@@ -57,10 +57,11 @@ SBI証券・楽天証券の保有証券CSVを読み込んで、資産ポート�
 
 ```sql
 create table snapshots (
-  snapshot_date date primary key,
-  total_value   numeric not null,
-  total_cost    numeric not null,
-  updated_at    timestamptz not null default now()
+  snapshot_date  date primary key,
+  total_value    numeric not null,
+  total_cost     numeric not null,
+  holdings_count integer not null default 0,
+  updated_at     timestamptz not null default now()
 );
 
 create table holdings (
@@ -92,8 +93,9 @@ create policy "anon all" on holdings  for all to anon using (true) with check (t
 ### 挙動
 
 - CSVを読み込むたびに、その日のスナップショット（日付・資産残高・元本）と保有明細の全銘柄が保存されます。同じ日付を読み直すと上書きされます
-- 起動時にDBから資産推移を読み戻します。DBが空のときはブラウザの記録を残します
-- ポートフォリオ（ドーナツ・銘柄一覧）は起動時は空です。保有明細はDBに保存されますが読み戻しません
+- 起動時にDBから資産推移を読み戻し、**最新日のポートフォリオを表示します**。CSVを読み込まなくても前回の内容が見られます
+- セクション見出しの日付セレクタで、過去の日付のポートフォリオに切り替えられます
+- 金額は記録されているが保有明細が無い日は、セレクタに「（明細なし）」と表示されます。Supabaseに接続する前に記録した日や、CSVを残さず取り込んだ日が該当します
 - 「履歴クリア」はSupabaseの記録も削除します
 
 ### 注意
