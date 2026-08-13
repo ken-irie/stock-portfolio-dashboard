@@ -77,6 +77,33 @@
     }
   }
 
+  // 指定日の保有明細を取得する。戻り値は RAW と同じ形なので setData() にそのまま渡せる。
+  // 欠損は "" と 0 に寄せる（CSVパーサーの出力と形を揃えるため）。
+  async function sbLoadHoldings(date){
+    if(!sbEnabled()) return null;
+    const res=await sbFetch("holdings?snapshot_date=eq."+date+"&select=name,code,broker,acct,cat,qty,value,cost");
+    if(!res){ sbStatus("error"); return null; }
+    try{
+      const rows=await res.json();
+      if(!Array.isArray(rows)){ sbStatus("error"); return null; }
+      sbStatus("ok");
+      return rows.map(r=>({
+        name:r.name,
+        code:r.code||"",
+        broker:r.broker||"",
+        acct:r.acct||"",
+        cat:r.cat||"",
+        qty:Number(r.qty)||0,
+        value:Number(r.value),
+        cost:Number(r.cost)
+      }));
+    }catch(e){
+      console.warn("[supabase] failed to parse holdings", e);
+      sbStatus("error");
+      return null;
+    }
+  }
+
   // スナップショットと保有明細を保存する。
   // FK制約があるので snapshots upsert → holdings DELETE → holdings INSERT の順は必須。
   async function sbSaveSnapshot(snap){
@@ -162,6 +189,7 @@
   window.sbEnabled=sbEnabled;
   window.sbStatus=sbStatus;
   window.sbLoadHistory=sbLoadHistory;
+  window.sbLoadHoldings=sbLoadHoldings;
   window.sbSaveSnapshot=sbSaveSnapshot;
   window.sbDeleteDay=sbDeleteDay;
   window.sbDeleteAll=sbDeleteAll;

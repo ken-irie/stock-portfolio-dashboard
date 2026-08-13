@@ -313,6 +313,46 @@ test("sbSaveSnapshot: 不正な行があるときは1度も通信せずfalseを�
   });
 });
 
+test("sbLoadHoldings: 指定日のURLとselect句が正しい", async()=>{
+  await withEnv(CFG, [{body:[]}], async(mf)=>{
+    await sbLoadHoldings("2026-08-13");
+    eq(mf.calls.length, 1);
+    eq(mf.calls[0].method, "GET");
+    eq(mf.calls[0].url,
+       "https://demo.supabase.co/rest/v1/holdings?snapshot_date=eq.2026-08-13&select=name,code,broker,acct,cat,qty,value,cost");
+  });
+});
+
+test("sbLoadHoldings: RAWと同じ形の配列に変換する", async()=>{
+  const body=[{name:"トヨタ自動車", code:"7203", broker:"SBI", acct:"特定", cat:"jp", qty:"100", value:"1000", cost:"800"},
+              {name:"現金", code:null, broker:null, acct:null, cat:null, qty:null, value:"500", cost:"400"}];
+  await withEnv(CFG, [{body}], async()=>{
+    eq(await sbLoadHoldings("2026-08-13"),
+       [{name:"トヨタ自動車", code:"7203", broker:"SBI", acct:"特定", cat:"jp", qty:100, value:1000, cost:800},
+        {name:"現金", code:"", broker:"", acct:"", cat:"", qty:0, value:500, cost:400}]);
+  });
+});
+
+test("sbLoadHoldings: 4xxならnullを返す", async()=>{
+  await withEnv(CFG, [{ok:false, status:401}], async()=>{
+    eq(await sbLoadHoldings("2026-08-13"), null);
+    eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbLoadHoldings: 設定が無ければfetchを呼ばずnullを返す", async()=>{
+  await withEnv(undefined, [], async(mf)=>{
+    eq(await sbLoadHoldings("2026-08-13"), null);
+    eq(mf.calls.length, 0);
+  });
+});
+
+test("sbLoadHoldings: 空配列とnullを区別できる", async()=>{
+  await withEnv(CFG, [{body:[]}], async()=>{
+    eq(await sbLoadHoldings("2026-08-13"), []);
+  });
+});
+
 // === /tests ===
 
 (async function run(){
