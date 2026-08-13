@@ -55,9 +55,10 @@
   }
 
   // 資産推移を取得する。失敗はnull、DBが空なら空配列（app.js側で区別する）
+  // n は保有明細の件数。0 は「金額はあるが明細が記録されていない日」を意味する。
   async function sbLoadHistory(){
     if(!sbEnabled()) return null;   // 未設定時は「DB未設定」表示のままにする
-    const res=await sbFetch("snapshots?select=snapshot_date,total_value,total_cost&order=snapshot_date.asc");
+    const res=await sbFetch("snapshots?select=snapshot_date,total_value,total_cost,holdings_count&order=snapshot_date.asc");
     if(!res){ sbStatus("error"); return null; }
     try{
       const rows=await res.json();
@@ -66,7 +67,8 @@
       return rows.map(r=>({
         date:r.snapshot_date,
         total:Number(r.total_value),
-        cost:Number(r.total_cost)
+        cost:Number(r.total_cost),
+        n:Number(r.holdings_count)||0
       }));
     }catch(e){
       console.warn("[supabase] failed to parse history", e);

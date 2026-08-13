@@ -82,13 +82,13 @@ test("sbStatus: 3状態で文言とclassが変わる", async()=>{
   sbStatus("error"); eq(el.textContent, "DB同期失敗"); eq(el.className, "dbstat error");
 });
 
-test("sbLoadHistory: 取得結果を{date,total,cost}の配列に変換する", async()=>{
-  const body=[{snapshot_date:"2026-08-01", total_value:"1000", total_cost:"800"},
-              {snapshot_date:"2026-08-02", total_value:"1100", total_cost:"800"}];
+test("sbLoadHistory: 取得結果を{date,total,cost,n}の配列に変換する", async()=>{
+  const body=[{snapshot_date:"2026-08-01", total_value:"1000", total_cost:"800", holdings_count:39},
+              {snapshot_date:"2026-08-02", total_value:"1100", total_cost:"800", holdings_count:0}];
   await withEnv(CFG, [{body}], async()=>{
     const r=await sbLoadHistory();
-    eq(r, [{date:"2026-08-01", total:1000, cost:800},
-           {date:"2026-08-02", total:1100, cost:800}]);
+    eq(r, [{date:"2026-08-01", total:1000, cost:800, n:39},
+           {date:"2026-08-02", total:1100, cost:800, n:0}]);
     eq(statText(), "DB同期済");
   });
 });
@@ -98,7 +98,7 @@ test("sbLoadHistory: URLに日付昇順のクエリが付く", async()=>{
     await sbLoadHistory();
     eq(mf.calls.length, 1);
     eq(mf.calls[0].url,
-       "https://demo.supabase.co/rest/v1/snapshots?select=snapshot_date,total_value,total_cost&order=snapshot_date.asc");
+       "https://demo.supabase.co/rest/v1/snapshots?select=snapshot_date,total_value,total_cost,holdings_count&order=snapshot_date.asc");
     eq(mf.calls[0].method, "GET");
   });
 });
@@ -286,6 +286,13 @@ test("sbSaveSnapshot: rowsに不正な行があっても例外を投げずfalse�
   await withEnv(CFG, [{}, {}, {}], async()=>{
     eq(await sbSaveSnapshot({date:"2026-08-13", total:1, cost:1, rows:[null]}), false);
     eq(statText(), "DB同期失敗");
+  });
+});
+
+test("sbLoadHistory: holdings_countが無い行はn=0になる", async()=>{
+  const body=[{snapshot_date:"2026-08-01", total_value:"1000", total_cost:"800"}];
+  await withEnv(CFG, [{body}], async()=>{
+    eq(await sbLoadHistory(), [{date:"2026-08-01", total:1000, cost:800, n:0}]);
   });
 });
 
