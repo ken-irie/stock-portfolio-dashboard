@@ -774,6 +774,7 @@ function rebuildFromLoaded(failed){
   loadedNames=labels.concat(failed);
   const srcEl=document.getElementById("src");
   if(RAW.length){
+    listEmptyMsg=LIST_EMPTY_DEFAULT;        // 過去日表示の文言を持ち越さない
     setData(RAW);
     const anyDummy=[...LOADED.values()].some(v=>v.dummy);   // 1つでもデモなら推移に記録しない
     const dataDate=strong.length ? strong.reduce((a,b)=>a>b?a:b)
@@ -1043,9 +1044,12 @@ function renderHistory(){
 document.getElementById("histClear").addEventListener("click",()=>{
   if(!loadHist().length) return;
   if(confirm("資産推移の記録をすべて削除しますか？（Supabaseの記録も削除されます）")){
+    showSeq++;                                       // 取得中の表示切り替えを無効化する
     localStorage.removeItem(HIST_KEY);
     renderHistory();
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
+    curDate="";
+    buildDateSelector(loadHist());                   // 消した日付を選べないようにする
     sbDeleteAll();
   }
 });
@@ -1090,6 +1094,9 @@ function delHistoryDay(day){
   if(!h.some(x=>x.date===day)) return false;
   localStorage.setItem(HIST_KEY, JSON.stringify(h.filter(x=>x.date!==day)));
   histLocalWrite=true;                             // 読み戻しで消した記録が復活しないようにする
+  showSeq++;                                       // 取得中の表示切り替えを無効化する
+  if(curDate===day) curDate="";
+  buildDateSelector(loadHist());                   // 消した日付を選べないようにする
   sbDeleteDay(day);
   return true;
 }
@@ -1119,8 +1126,8 @@ renderHistory();
 function buildDateSelector(hist){
   const sel=document.getElementById("dateSel");
   if(!sel) return;
-  if(!sbEnabled()||!hist||!hist.length){ sel.hidden=true; return; }
-  HIST_BY_DATE.clear();
+  HIST_BY_DATE.clear();                                     // 選択肢と対応表は常に一致させる
+  if(!sbEnabled()||!hist||!hist.length){ sel.innerHTML=""; sel.hidden=true; return; }
   const opts=['<option value="">—</option>'];
   for(let i=hist.length-1;i>=0;i--){          // 新しい日付を上に出す
     const h=hist[i];
@@ -1165,6 +1172,9 @@ async function showDate(date){
 document.getElementById("dateSel").addEventListener("change",e=>{
   if(e.target.value) showDate(e.target.value);
 });
+
+// 起動直後は手元の記録で日付セレクタを出しておく（DBの読み戻しを待たない）
+buildDateSelector(loadHist());
 
 // Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
 // 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
