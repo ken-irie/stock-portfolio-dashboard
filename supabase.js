@@ -55,9 +55,10 @@
   }
 
   // 資産推移を取得する。失敗はnull、DBが空なら空配列（app.js側で区別する）
+  // n は保有明細の件数。0 は「金額はあるが明細が記録されていない日」を意味する。
   async function sbLoadHistory(){
     if(!sbEnabled()) return null;   // 未設定時は「DB未設定」表示のままにする
-    const res=await sbFetch("snapshots?select=snapshot_date,total_value,total_cost&order=snapshot_date.asc");
+    const res=await sbFetch("snapshots?select=snapshot_date,total_value,total_cost,holdings_count&order=snapshot_date.asc");
     if(!res){ sbStatus("error"); return null; }
     try{
       const rows=await res.json();
@@ -66,10 +67,38 @@
       return rows.map(r=>({
         date:r.snapshot_date,
         total:Number(r.total_value),
-        cost:Number(r.total_cost)
+        cost:Number(r.total_cost),
+        n:Number(r.holdings_count)||0
       }));
     }catch(e){
       console.warn("[supabase] failed to parse history", e);
+      sbStatus("error");
+      return null;
+    }
+  }
+
+  // 指定日の保有明細を取得する。戻り値は RAW と同じ形なので setData() にそのまま渡せる。
+  // 欠損は "" と 0 に寄せる（CSVパーサーの出力と形を揃えるため）。
+  async function sbLoadHoldings(date){
+    if(!sbEnabled()) return null;
+    const res=await sbFetch("holdings?snapshot_date=eq."+date+"&select=name,code,broker,acct,cat,qty,value,cost");
+    if(!res){ sbStatus("error"); return null; }
+    try{
+      const rows=await res.json();
+      if(!Array.isArray(rows)){ sbStatus("error"); return null; }
+      sbStatus("ok");
+      return rows.map(r=>({
+        name:r.name,
+        code:r.code||"",
+        broker:r.broker||"",
+        acct:r.acct||"",
+        cat:r.cat||"",
+        qty:Number(r.qty)||0,
+        value:Number(r.value),
+        cost:Number(r.cost)
+      }));
+    }catch(e){
+      console.warn("[supabase] failed to parse holdings", e);
       sbStatus("error");
       return null;
     }
@@ -82,25 +111,7 @@
     if(!sbEnabled()) return false;
     const date=snap.date;
 
-    const up=await sbFetch("snapshots", {
-      method:"POST",
-      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
-      body:{
-        snapshot_date:date,
-        total_value:snap.total,
-        total_cost:snap.cost,
-        updated_at:new Date().toISOString()   // default now() はUPDATE時に再適用されないので明示する
-      }
-    });
-    if(!up){ sbStatus("error"); return false; }
-
-    // 差分を取らず、その日の明細を消してから入れ直す（銘柄の増減を考えずに済む）
-    const del=await sbFetch("holdings?snapshot_date=eq."+date, {
-      method:"DELETE",
-      headers:{"Prefer":"return=minimal"}
-    });
-    if(!del){ sbStatus("error"); return false; }
-
+    // 件数をupsertに含めるため、明細の組み立てを先に済ませる
     let rows;
     try{
       rows=(snap.rows||[]).map(r=>({
@@ -119,6 +130,27 @@
       sbStatus("error");
       return false;
     }
+
+    const up=await sbFetch("snapshots", {
+      method:"POST",
+      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:{
+        snapshot_date:date,
+        total_value:snap.total,
+        total_cost:snap.cost,
+        holdings_count:rows.length,
+        updated_at:new Date().toISOString()   // default now() はUPDATE時に再適用されないので明示する
+      }
+    });
+    if(!up){ sbStatus("error"); return false; }
+
+    // 差分を取らず、その日の明細を消してから入れ直す（銘柄の増減を考えずに済む）
+    const del=await sbFetch("holdings?snapshot_date=eq."+date, {
+      method:"DELETE",
+      headers:{"Prefer":"return=minimal"}
+    });
+    if(!del){ sbStatus("error"); return false; }
+
     if(rows.length){
       const ins=await sbFetch("holdings", {
         method:"POST",
@@ -157,6 +189,7 @@
   window.sbEnabled=sbEnabled;
   window.sbStatus=sbStatus;
   window.sbLoadHistory=sbLoadHistory;
+  window.sbLoadHoldings=sbLoadHoldings;
   window.sbSaveSnapshot=sbSaveSnapshot;
   window.sbDeleteDay=sbDeleteDay;
   window.sbDeleteAll=sbDeleteAll;

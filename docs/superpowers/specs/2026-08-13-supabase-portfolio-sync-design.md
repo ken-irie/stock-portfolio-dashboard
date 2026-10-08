@@ -3,6 +3,15 @@
 作成日: 2026-08-13
 対象リポジトリ: `stock-portfolio-dashboard`（公開リポジトリ）
 
+> **一部は後続の設計で置き換わっている。** `2026-08-13-past-date-portfolio-design.md`（過去日ポートフォリオ表示）により、次の記述はもう現状と合わない。
+>
+> - **3.2 のインターフェース** — 公開関数は5つではなく7つ。`sbLoadHoldings(date)` が加わり、`sbLoadHistory()` の戻り値は `{date, total, cost, n}`（`n` は明細件数）に拡張された
+> - **4 のスキーマ** — `snapshots` に `holdings_count` 列を追加済み（下記DDLは更新済み）
+> - **5 の履歴取得URL** — `select` に `holdings_count` が加わっている
+> - **6.1 の起動直後の表示** — 起動時はDBの最新日のポートフォリオを表示する。「起動時は空」ではなくなった
+>
+> それ以外（認証方針、localStorageを同期キャッシュとして扱う設計、保存フロー、削除、エラー処理）は現行のまま有効。
+
 ## 1. 背景と目的
 
 現在のアプリは完全にローカルで動く静的Webアプリで、資産推移をブラウザの localStorage（`kabu_asset_history_v1`）にのみ保存している。localStorage はブラウザのデータ消去で失われ、別のPCから見ることもできない。
@@ -79,10 +88,11 @@ Supabase の SQL Editor で実行する。
 
 ```sql
 create table snapshots (
-  snapshot_date date primary key,
-  total_value   numeric not null,
-  total_cost    numeric not null,
-  updated_at    timestamptz not null default now()
+  snapshot_date  date primary key,
+  total_value    numeric not null,
+  total_cost     numeric not null,
+  holdings_count integer not null default 0,   -- 2026-08-13 追加。過去日ポートフォリオ表示で使う
+  updated_at     timestamptz not null default now()
 );
 
 create table holdings (

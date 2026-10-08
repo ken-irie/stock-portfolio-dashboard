@@ -7,6 +7,11 @@ let ALL = [];               // 個別表示用（同名合算後）
 let RAW = [];               // 読み込んだ全銘柄（口座別・合算前）
 let loadedNames = [];       // 読み込み済みファイル名
 let groupMode = "individual"; // individual | sector | economic | account | broker
+const LIST_EMPTY_DEFAULT="CSVを読み込むと、ここに保有銘柄が一覧表示されます";
+let listEmptyMsg=LIST_EMPTY_DEFAULT;   // 銘柄一覧が空のときに出す文言
+let curDate="";                        // いま表示している日付（取得失敗時に選択を戻すため）
+let showSeq=0;                         // 古い応答が新しい表示を上書きしないための連番
+const HIST_BY_DATE=new Map();          // 日付 → 推移エントリ
 let drill = null;             // 展開中のグループキー
 let sortKey = "value";        // value | pl | name
 let sortDir = "desc";         // asc | desc
@@ -578,7 +583,7 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
   const list=document.getElementById("list");
   list.innerHTML="";
   if(!data.length){
-    const msg = ALL.length===0 ? "CSVを読み込むと、ここに保有銘柄が一覧表示されます" : "該当する銘柄はありません";
+    const msg = ALL.length===0 ? listEmptyMsg : "該当する銘柄はありません";
     list.innerHTML=`<div style="padding:48px 24px;text-align:center;color:#8a909c;font-size:14px;">${msg}</div>`;
     return;
   }
@@ -769,11 +774,19 @@ function rebuildFromLoaded(failed){
   loadedNames=labels.concat(failed);
   const srcEl=document.getElementById("src");
   if(RAW.length){
+    listEmptyMsg=LIST_EMPTY_DEFAULT;        // 過去日表示の文言を持ち越さない
     setData(RAW);
     const anyDummy=[...LOADED.values()].some(v=>v.dummy);   // 1つでもデモなら推移に記録しない
     const dataDate=strong.length ? strong.reduce((a,b)=>a>b?a:b)
                  : (weak.length ? weak.reduce((a,b)=>a>b?a:b) : null);
-    if(!anyDummy) saveSnapshot(dataDate);   // 資産推移にデータ基準日で記録（デモ時はスキップ）
+    showSeq++;                              // 読み戻し中の表示切り替えを無効化する
+    if(!anyDummy){
+      saveSnapshot(dataDate);               // 資産推移にデータ基準日で記録（デモ時はスキップ）
+      curDate=dataDate||isoLocal();
+      buildDateSelector(loadHist());        // 今読み込んだ日付を含めて作り直す
+      const sel=document.getElementById("dateSel");
+      if(sel) sel.value=curDate;
+    }
     srcEl.textContent=loadedNames.join(" / ")
       +(anyDummy?"｜デモ（推移に記録しません）":(dataDate?`｜基準日 ${dataDate.replace(/-/g,"/")}`:""));
     srcEl.style.color="#dfe3ea";
@@ -813,10 +826,15 @@ document.getElementById("pasteRun").addEventListener("click",()=>{
 
 // データリセット
 document.getElementById("reset").addEventListener("click",()=>{
+  showSeq++;                        // 取得中の表示切り替えを無効化する
   RAW=[]; loadedNames=[]; LOADED.clear();
+  listEmptyMsg=LIST_EMPTY_DEFAULT;
+  curDate="";
   setData([]);
   curView="donut";
   document.querySelector(".treemap-btn").textContent="ツリーマップ";
+  const sel=document.getElementById("dateSel");
+  if(sel) sel.value="";
   const srcEl=document.getElementById("src");
   srcEl.textContent="CSV未読み込み";
   srcEl.style.color="";
@@ -862,7 +880,7 @@ function saveSnapshot(dateStr){
   const cost =RAW.reduce((s,d)=>s+d.cost,0);
   const day=dateStr||isoLocal();
   const hist=loadHist().filter(h=>h.date!==day);   // 同日の記録は上書き
-  hist.push({date:day,total,cost});
+  hist.push({date:day,total,cost,n:RAW.length});   // セレクタの「明細なし」判定に使う
   hist.sort((a,b)=>a.date.localeCompare(b.date));
   try{ localStorage.setItem(HIST_KEY,JSON.stringify(hist)); }catch{}
   renderHistory();
@@ -1026,9 +1044,12 @@ function renderHistory(){
 document.getElementById("histClear").addEventListener("click",()=>{
   if(!loadHist().length) return;
   if(confirm("資産推移の記録をすべて削除しますか？（Supabaseの記録も削除されます）")){
+    showSeq++;                                       // 取得中の表示切り替えを無効化する
     localStorage.removeItem(HIST_KEY);
     renderHistory();
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
+    curDate="";
+    buildDateSelector(loadHist());                   // 消した日付を選べないようにする
     sbDeleteAll();
   }
 });
@@ -1073,6 +1094,9 @@ function delHistoryDay(day){
   if(!h.some(x=>x.date===day)) return false;
   localStorage.setItem(HIST_KEY, JSON.stringify(h.filter(x=>x.date!==day)));
   histLocalWrite=true;                             // 読み戻しで消した記録が復活しないようにする
+  showSeq++;                                       // 取得中の表示切り替えを無効化する
+  if(curDate===day) curDate="";
+  buildDateSelector(loadHist());                   // 消した日付を選べないようにする
   sbDeleteDay(day);
   return true;
 }
@@ -1096,6 +1120,62 @@ function delHistoryDay(day){
 setData([]);
 renderHistory();
 
+// ===== 日付を選んで過去のポートフォリオを表示する =====
+
+// 推移データから日付セレクタを組み立てる（新しい日付が上）
+function buildDateSelector(hist){
+  const sel=document.getElementById("dateSel");
+  if(!sel) return;
+  HIST_BY_DATE.clear();                                     // 選択肢と対応表は常に一致させる
+  if(!sbEnabled()||!hist||!hist.length){ sel.innerHTML=""; sel.hidden=true; return; }
+  const opts=['<option value="">—</option>'];
+  for(let i=hist.length-1;i>=0;i--){          // 新しい日付を上に出す
+    const h=hist[i];
+    HIST_BY_DATE.set(h.date,h);
+    opts.push(`<option value="${h.date}">${h.date}${h.n?"":"（明細なし）"}</option>`);
+  }
+  sel.innerHTML=opts.join("");
+  sel.hidden=false;
+}
+
+// その日の表示を画面に反映する
+function applyDateView(date,rows,h){
+  listEmptyMsg = rows.length ? LIST_EMPTY_DEFAULT
+    : "この日の保有明細は記録されていません。金額は上の資産推移で確認できます";
+  loadedNames=[]; LOADED.clear();   // CSV由来の状態は持ち越さない
+  setData(rows);                    // RAW もここで入れ替わる
+  curDate=date;
+  const sel=document.getElementById("dateSel");
+  if(sel) sel.value=date;
+  const srcEl=document.getElementById("src");
+  srcEl.textContent=date.replace(/-/g,"/")+" の記録（Supabase）";
+  srcEl.style.color="#dfe3ea";
+  histShow(h);                      // 推移カードの詳細バーも同じ日付に合わせる
+}
+
+// 指定日の表示に切り替える
+async function showDate(date){
+  const h=HIST_BY_DATE.get(date);
+  if(!h) return;
+  const seq=++showSeq;
+  if(!h.n){ applyDateView(date,[],h); return; }   // 明細が無い日は取りに行かない
+  const rows=await sbLoadHoldings(date);
+  if(seq!==showSeq) return;                        // より新しい選択が始まっている
+  if(!rows){                                       // 取得失敗 → 表示を壊さず選択を戻す
+    const sel=document.getElementById("dateSel");
+    if(sel) sel.value=curDate;
+    return;
+  }
+  applyDateView(date,rows,h);
+}
+
+document.getElementById("dateSel").addEventListener("change",e=>{
+  if(e.target.value) showDate(e.target.value);
+});
+
+// 起動直後は手元の記録で日付セレクタを出しておく（DBの読み戻しを待たない）
+buildDateSelector(loadHist());
+
 // Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
 // 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
 (async function hydrateFromDB(){
@@ -1105,4 +1185,6 @@ renderHistory();
   if(!rows||!rows.length) return;   // 取得失敗、またはDBが空 → localStorageの内容を残す
   try{ localStorage.setItem(HIST_KEY,JSON.stringify(rows)); }catch{}
   renderHistory();
+  buildDateSelector(rows);
+  showDate(rows[rows.length-1].date);   // 最新日を表示する
 })();
