@@ -82,11 +82,40 @@ function histTipHTML(h){
     `<div class="tip-r"><span>評価損益</span>`+
     `<b class="${pl>=0?'pos':'neg'}">${sg}¥${fmt(pl)} (${sg}${pct.toFixed(2)}%)</b></div>`;
 }
+// ===== スマホ（ホバーできない端末）向け：タップで選んでグラフ下に詳細を出す =====
+const touchUI=window.matchMedia("(hover:none)");
+const detailEl=document.getElementById("chartDetail");
+let selEl=null;
+function clearSel(){
+  if(selEl) selEl.classList.remove("sel");
+  selEl=null;
+  svg.classList.remove("has-sel");
+  detailEl.hidden=true;
+}
+function selectItem(el,d,total,canOpen){
+  clearSel();
+  selEl=el;
+  el.classList.add("sel");
+  svg.classList.add("has-sel");
+  detailEl.innerHTML=tipHTML(d,total)+(canOpen?`<div class="detail-hint">もう一度タップで内訳を表示</div>`:"");
+  detailEl.hidden=false;
+}
+// グラフの外をタップしたら選択を解除する
+document.addEventListener("click",()=>{ if(selEl) clearSel(); });
+
 // チャート領域にツールチップイベントを付与
-function attachTip(el,d,total){
-  el.addEventListener("mouseenter",ev=>showTip(ev,d,total));
-  el.addEventListener("mousemove",moveTip);
+// onOpen はクリックで内訳を開く処理（グループ・合算銘柄のみ）。スマホでは2回目のタップで呼ぶ
+function attachTip(el,d,total,onOpen){
+  el.setAttribute("data-tap","");
+  el.addEventListener("mouseenter",ev=>{ if(!touchUI.matches) showTip(ev,d,total); });
+  el.addEventListener("mousemove",ev=>{ if(!touchUI.matches) moveTip(ev); });
   el.addEventListener("mouseleave",hideTip);
+  el.addEventListener("click",ev=>{
+    if(!touchUI.matches){ if(onOpen) onOpen(); return; }
+    ev.stopPropagation();                   // 外側タップの解除処理に届かせない
+    if(selEl!==el){ selectItem(el,d,total,!!onOpen); return; }
+    if(onOpen) onOpen(); else clearSel();
+  });
 }
 
 // ===== CSVパーサー（SBI / 楽天 両対応・Shift-JIS） =====
@@ -441,12 +470,13 @@ function renderDonut(data,total,totalCost,totalPL,totalPct){
     path.setAttribute("fill",d.color);
     path.setAttribute("stroke","#06070c");
     path.setAttribute("stroke-width","2.5");
-    attachTip(path,d,total);
+    let onOpen=null;
     if(d.code==="group"||d.multi){
       const key=d.code==="group" ? d.name : mergeKey(d);
       path.style.cursor="pointer";
-      path.addEventListener("click",()=>{ drill = drill===key ? null : key; render(); });
+      onOpen=()=>{ drill = drill===key ? null : key; render(); };
     }
+    attachTip(path,d,total,onOpen);
     svg.appendChild(path);
     if(frac*100>=3){
       const mid=(a0+a1)/2, lr=(rOut+rIn)/2;
@@ -688,6 +718,7 @@ function render(){
   }
   svg.innerHTML="";
   hideTip();                          // 再描画時に出しっぱなしを防ぐ
+  clearSel();
   const gLabel=GROUP_LABEL[groupMode];
   document.getElementById("chartMode").textContent=
     (curView==="treemap"?"ツリーマップ":"ドーナツ")+" / "+(groupMode==="individual"?"個別":gLabel+"別");
