@@ -6,9 +6,11 @@
   function cfg(){
     const c=window.SUPABASE_CONFIG;
     if(!c) return null;
+    // 公開版（Cloudflare Workers）はWorkerが中継する。キーはサーバー側にだけ置く
+    if(c.proxy) return {base:c.proxy, headers:{}, proxy:true};
     const url=(c.url||"").replace(/\/+$/,"");   // 末尾スラッシュを落として結合を安定させる
     const key=c.key||"";
-    return (url&&key) ? {url,key} : null;
+    return (url&&key) ? {base:url+"/rest/v1/", headers:{"apikey":key, "Authorization":"Bearer "+key}} : null;
   }
 
   function sbEnabled(){ return !!cfg(); }
@@ -30,18 +32,16 @@
     const c=cfg();
     if(!c) return null;
     const opt=options||{};
-    const headers=Object.assign({
-      "apikey":c.key,
-      "Authorization":"Bearer "+c.key,
-      "Content-Type":"application/json"
-    }, opt.headers||{});
+    const headers=Object.assign({}, c.headers, {"Content-Type":"application/json"}, opt.headers||{});
     try{
-      const res=await window.fetch(c.url+"/rest/v1/"+path, {
+      const res=await window.fetch(c.base+path, {
         method:opt.method||"GET",
         headers,
         body:opt.body!==undefined ? JSON.stringify(opt.body) : undefined,
         signal:AbortSignal.timeout(TIMEOUT)
       });
+      // ログインの有効期限が切れたらログイン画面へ戻す
+      if(c.proxy && res.status===401){ window.location.href="/login"; return null; }
       if(!res.ok){
         let detail=""; try{ detail=await res.text(); }catch{}
         console.warn("[supabase] "+res.status+" "+path, detail);

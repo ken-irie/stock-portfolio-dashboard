@@ -353,6 +353,19 @@ test("sbLoadHoldings: 空配列とnullを区別できる", async()=>{
   });
 });
 
+test("中継モード: proxyだけ設定されていれば有効になる", async()=>{
+  await withEnv({proxy:"/api/db/"}, [], async()=>{ eq(sbEnabled(), true); });
+});
+
+test("中継モード: 中継先に送り、キーのヘッダを付けない", async()=>{
+  await withEnv({proxy:"/api/db/"}, [{body:[]}], async(mf)=>{
+    await sbLoadHoldings("2026-08-13");
+    assert(mf.calls[0].url.startsWith("/api/db/holdings?snapshot_date=eq.2026-08-13"), mf.calls[0].url);
+    eq(mf.calls[0].headers.apikey, undefined);
+    eq(mf.calls[0].headers.Authorization, undefined);
+  });
+});
+
 // === /tests ===
 
 (async function run(){

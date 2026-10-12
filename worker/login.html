@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>ログイン | 資産ポートフォリオ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#06070c;--panel:#0d0f17;--line:#232838;--text:#eef0f6;--muted:#7e8496;--gold:#e3c477;--red:#ff6b7a;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    font-family:"Zen Kaku Gothic New",sans-serif;color:var(--text);min-height:100vh;
+    display:flex;align-items:center;justify-content:center;padding:16px;
+    background:radial-gradient(900px 480px at 85% -10%, rgba(227,196,119,.08), transparent 60%), var(--bg);
+  }
+  .card{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px 28px;}
+  .brand{font-size:20px;font-weight:900;margin-bottom:6px;}
+  .brand span{color:var(--gold);}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px;}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+  input{width:100%;padding:11px 12px;border-radius:8px;border:1px solid var(--line);background:#161a26;color:var(--text);font-size:15px;}
+  input:focus{outline:2px solid var(--gold);outline-offset:1px;}
+  button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--gold);color:#1a1405;font-weight:700;font-size:15px;cursor:pointer;}
+  button:disabled{opacity:.6;cursor:default;}
+  .error{color:var(--red);font-size:13px;min-height:1.4em;margin-top:12px;}
+</style>
+</head>
+<body>
+  <form class="card" id="form">
+    <div class="brand">資産<span>ポートフォリオ</span></div>
+    <p class="sub">続けるにはパスワードを入力してください。</p>
+    <label for="password">パスワード</label>
+    <input type="password" id="password" autocomplete="current-password" autofocus required>
+    <button type="submit" id="btn">ログイン</button>
+    <p class="error" id="error"></p>
+  </form>
+<script>
+const form=document.getElementById("form"), btn=document.getElementById("btn"), errEl=document.getElementById("error");
+form.addEventListener("submit", async e=>{
+  e.preventDefault();
+  errEl.textContent="";
+  btn.disabled=true; btn.textContent="ログイン中…";
+  try{
+    const res=await fetch("/api/login", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({password:document.getElementById("password").value})
+    });
+    if(res.ok){ location.href="/"; return; }
+    const data=await res.json().catch(()=>({}));
+    errEl.textContent=data.error||"ログインに失敗しました";
+  }catch{
+    errEl.textContent="通信エラーが発生しました";
+  }
+  btn.disabled=false; btn.textContent="ログイン";
+});
+</script>
+</body>
+</html>
