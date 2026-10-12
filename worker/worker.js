@@ -68,17 +68,26 @@ async function proxyDb(req, env, url) {
   const table = url.pathname.slice("/api/db/".length);
   if (!TABLE_PATH.test(table) || !DB_METHODS.has(req.method)) return json({ error: "許可されていない操作です" }, 403);
   const headers = {
-    "apikey": env.SUPABASE_KEY,
-    "Authorization": "Bearer " + env.SUPABASE_KEY,
+    "apikey": (env.SUPABASE_KEY || "").trim(),
+    "Authorization": "Bearer " + (env.SUPABASE_KEY || "").trim(),
     "Content-Type": "application/json",
   };
   const prefer = req.headers.get("Prefer");
   if (prefer) headers["Prefer"] = prefer;
-  const res = await fetch(env.SUPABASE_URL.replace(/\/+$/, "") + "/rest/v1/" + table + url.search, {
-    method: req.method,
-    headers,
-    body: req.method === "POST" ? await req.text() : undefined,
-  });
+  // 設定ミスは例外で落とさず、どの値がおかしいかを返す（値そのものは出さない）
+  if (!env.SUPABASE_URL || !env.SUPABASE_KEY) return json({ error: "SUPABASE_URL / SUPABASE_KEY が設定されていません" }, 500);
+  let base;
+  try { base = new URL(env.SUPABASE_URL.trim()); } catch { return json({ error: "SUPABASE_URL がURLとして読めません" }, 500); }
+  let res;
+  try {
+    res = await fetch(base.origin + "/rest/v1/" + table + url.search, {
+      method: req.method,
+      headers,
+      body: req.method === "POST" ? await req.text() : undefined,
+    });
+  } catch (e) {
+    return json({ error: "Supabaseへの接続に失敗しました: " + e.message }, 502);
+  }
   return new Response(res.body, {
     status: res.status,
     headers: { "Content-Type": res.headers.get("Content-Type") || "application/json", "Cache-Control": "no-store" },
