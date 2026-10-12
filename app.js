@@ -389,7 +389,16 @@ let otherPct=2;               // この%以下のスライスを[その他]に�
 // ラベルの折り返し（全角=1 / 半角=0.55 換算で1行8文字相当、最大2行）
 function wrapLabel(s){
   const w=ch=>ch.charCodeAt(0)<256?0.55:1;
+  const width=t=>[...t].reduce((a,ch)=>a+w(ch),0);
   const MAX=8, lines=[];
+  // 1行に収まらないときは「(」や空白の位置で折り返し、名前の途中で切れないようにする
+  if(width(s)>MAX){
+    for(let i=s.length-1;i>0;i--){
+      if(s[i]!=="(" && s[i]!==" ") continue;
+      const a=s.slice(0,i).trim(), b=s.slice(i).trim();
+      if(width(a)<=MAX+0.5 && width(b)<=MAX+0.5) return [a,b];   // 区切りで折れるなら少しのはみ出しは許す
+    }
+  }
   let cur="", len=0;
   for(const ch of s){
     if(len+w(ch)>MAX){
@@ -557,10 +566,12 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
   const sign=totalPL>=0?"+":"";
   const empty=ALL.length===0;
   document.getElementById("summary").innerHTML=`
-    <div class="stat"><div class="lab">${curFilter==="all"?"総資産評価額":"絞込 評価額"}</div><div class="num">${empty?'–':'¥'+fmt(total)}</div></div>
-    <div class="stat"><div class="lab">取得金額</div><div class="num sm">${empty?'–':'¥'+fmt(totalCost)}</div></div>
-    <div class="stat"><div class="lab">評価損益</div><div class="num sm ${totalPL>=0?'pos':'neg'}">${empty?'–':sign+'¥'+fmt(totalPL)}</div></div>
-    <div class="stat"><div class="lab">損益率</div><div class="num ${totalPL>=0?'pos':'neg'}">${empty||!totalCost?'–':sign+totalPct.toFixed(1)+'%'}</div></div>`;
+    <div class="hero"><div class="lab">${curFilter==="all"?"総資産評価額":"絞込 評価額"}</div><div class="hero-num">${empty?'–':'¥'+fmt(total)}</div></div>
+    <div class="metrics">
+      <div class="stat"><div class="lab">取得金額</div><div class="num">${empty?'–':'¥'+fmt(totalCost)}</div></div>
+      <div class="stat"><div class="lab">評価損益</div><div class="num ${totalPL>=0?'pos':'neg'}">${empty?'–':sign+'¥'+fmt(totalPL)}</div></div>
+      <div class="stat"><div class="lab">損益率</div><div class="num ${totalPL>=0?'pos':'neg'}">${empty||!totalCost?'–':sign+totalPct.toFixed(1)+'%'}</div></div>
+    </div>`;
   const titleEl=document.getElementById("listTitle");
   const arrow=k=> sortKey===k ? (sortDir==="desc"?" ▼":" ▲") : "";
   titleEl.innerHTML=`<span class="ltitle">保有銘柄一覧</span>`+
