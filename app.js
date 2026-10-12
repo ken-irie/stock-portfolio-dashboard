@@ -855,6 +855,9 @@ document.getElementById("reset").addEventListener("click",()=>{
 const HIST_KEY="kabu_asset_history_v1";
 let histLocalWrite=false;   // 起動後に手元で履歴を書き換えたか（DBからの読み戻しで上書きしないため）
 const histSvg=document.getElementById("histSvg");
+// スマホ幅では縦長の比率・大きめの文字で描く（幅が切り替わったら描き直す）
+const histNarrow=window.matchMedia("(max-width:640px)");
+let histW=1040;
 
 function loadHist(){
   try{ const a=JSON.parse(localStorage.getItem(HIST_KEY)); return Array.isArray(a)?a:[]; }
@@ -946,7 +949,10 @@ function renderHistory(){
   const info=document.getElementById("histInfo");
   const rangeEl=document.getElementById("hRange");
   histSvg.innerHTML=""; HPTS=[];
-  const W=1040,H=320,padL=24,padR=92,padT=26,padB=42;
+  const sp=histNarrow.matches;
+  const W=sp?420:1040, H=sp?340:320, padL=sp?8:24, padR=sp?86:92, padT=sp?34:26, padB=sp?34:42;
+  const fs=sp?14:11.5;   // 目盛り・凡例の文字サイズ
+  histW=W;
   histSvg.setAttribute("viewBox",`0 0 ${W} ${H}`);
   // 前回比（全期間の最新2件で計算）
   if(all.length>=2){
@@ -987,16 +993,17 @@ function renderHistory(){
     ln.setAttribute("y1",y);ln.setAttribute("y2",y);
     ln.setAttribute("stroke","#1c2030");
     histSvg.appendChild(ln);
-    svgText({x:W-padR+10,y,fill:"#7e8496","font-size":11.5,"font-family":"Sora",
+    svgText({x:W-padR+8,y,fill:"#7e8496","font-size":fs,"font-family":"Sora",
       "text-anchor":"start","dominant-baseline":"central",
       t: v===0 ? "0円" : fmt(Math.round(v/10000))+"万円"},histSvg);
   }
   // 日付ラベル（YY/MM・間引いて最大6個程度）
-  const step=Math.max(1,Math.ceil(hist.length/6));
+  const step=Math.max(1,Math.ceil(hist.length/(sp?4:6)));
   hist.forEach((h,i)=>{
     if(i%step!==0 && i!==hist.length-1) return;
-    svgText({x:X(h),y:H-padB+20,fill:"#7e8496","font-size":11,"font-family":"Sora",
-      "text-anchor":"middle",t:h.date.slice(2,7).replace("-","/")},histSvg);
+    svgText({x:X(h),y:H-padB+20,fill:"#7e8496","font-size":fs-0.5,"font-family":"Sora",
+      // 両端の日付は内側に寄せて、枠からはみ出さないようにする
+      "text-anchor":i===0?"start":i===hist.length-1?"end":"middle",t:h.date.slice(2,7).replace("-","/")},histSvg);
   });
   const y0=Y(0);
   const ptsT=hist.map(h=>`${X(h)},${Y(h.total)}`);
@@ -1045,11 +1052,13 @@ function renderHistory(){
   cdot.style.display="none";
   histSvg.appendChild(cdot);
   // 凡例
-  svgText({x:padL,y:12,fill:"#e3c477","font-size":11.5,"font-weight":600,
+  svgText({x:padL,y:sp?16:12,fill:"#e3c477","font-size":fs,"font-weight":600,
     "font-family":"Zen Kaku Gothic New",t:"― 評価額"},histSvg);
-  svgText({x:padL+78,y:12,fill:"#5bc6d8","font-size":11.5,"font-weight":600,
+  svgText({x:padL+(sp?92:78),y:sp?16:12,fill:"#5bc6d8","font-size":fs,"font-weight":600,
     "font-family":"Zen Kaku Gothic New",t:"▨ 取得金額（元本）"},histSvg);
 }
+
+histNarrow.addEventListener("change",()=>renderHistory());
 
 // 履歴クリア
 document.getElementById("histClear").addEventListener("click",()=>{
@@ -1079,13 +1088,14 @@ document.querySelectorAll(".hseg button").forEach(b=>{
 histSvg.addEventListener("mousemove",e=>{
   if(!HPTS.length){ hideTip(); return; }
   const r=histSvg.getBoundingClientRect();
-  const x=(e.clientX-r.left)/r.width*1040;
+  const x=(e.clientX-r.left)/r.width*histW;
   let best=HPTS[0];
   for(const p of HPTS) if(Math.abs(p.x-x)<Math.abs(best.x-x)) best=p;
   const ch=document.getElementById("hCross"), cd=document.getElementById("hCursorDot");
   if(ch){ ch.setAttribute("x1",best.x); ch.setAttribute("x2",best.x); ch.style.display=""; }
   if(cd){ cd.setAttribute("cx",best.x); cd.setAttribute("cy",best.y); cd.style.display=""; }
   histShow(best.h);
+  if(histNarrow.matches) return;         // スマホはカードがグラフを覆うので、上の詳細バーだけ更新する
   tipEl.innerHTML=histTipHTML(best.h);   // マウス位置にカード表示
   tipEl.style.display="block";
   moveTip(e);
