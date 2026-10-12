@@ -119,7 +119,7 @@ npx wrangler secret put SUPABASE_KEY
 - `APP_PASSWORD`: ログイン用のパスワード。総当たりされても破られないよう長めにする
 - `SUPABASE_URL` / `SUPABASE_KEY`: `supabase-config.js` の `url` / `key` と同じ値
 
-デプロイは `npm run cf:deploy` です。完了すると `https://stock-portfolio.<アカウント名>.workers.dev` で公開されます。
+デプロイは `npm run cf:deploy` です。完了すると https://stock-portfolio.card-lab.workers.dev で公開されます。
 
 ローカルで確認するときは、同じ3項目を `.dev.vars` に書いてから `npm run cf:dev` を実行し、http://localhost:8787 を開きます。`.dev.vars` はGit管理外です。
 
