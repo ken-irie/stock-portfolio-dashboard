@@ -102,6 +102,27 @@ create policy "anon all" on holdings  for all to anon using (true) with check (t
 
 `supabase-config.js` は `.gitignore` 対象です。**このファイルをコミットしないでください。** 認証を使わない構成のため、anonキーが漏れると誰でもデータを読み書きできます。別のPCで使うときは手動でファイルを配置してください。
 
+## 公開（Cloudflare Workers・任意）
+
+パスワード付きでWebに公開できます。Supabaseへの読み書きはWorkerが中継するため、接続キーはブラウザに渡りません。公開されるのは `worker/build.mjs` が `dist/` にコピーする画面用ファイルだけで、CSVや `supabase-config.js` は含まれません。
+
+初回だけ、次の手順で準備します。
+
+```
+npm install
+npx wrangler login
+npx wrangler secret put APP_PASSWORD
+npx wrangler secret put SUPABASE_URL
+npx wrangler secret put SUPABASE_KEY
+```
+
+- `APP_PASSWORD`: ログイン用のパスワード。総当たりされても破られないよう長めにする
+- `SUPABASE_URL` / `SUPABASE_KEY`: `supabase-config.js` の `url` / `key` と同じ値
+
+デプロイは `npm run cf:deploy` です。完了すると https://stock-portfolio.card-lab.workers.dev で公開されます。
+
+ローカルで確認するときは、同じ3項目を `.dev.vars` に書いてから `npm run cf:dev` を実行し、http://localhost:8787 を開きます。`.dev.vars` はGit管理外です。
+
 ## プライバシー
 
 - Supabaseを設定しない場合、すべての処理はブラウザ内で完結します。外部サーバーへの通信は行いません（Webフォントの読み込みを除く）

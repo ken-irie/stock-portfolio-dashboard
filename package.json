@@ -1,0 +1,13 @@
+{
+  "name": "stock-portfolio",
+  "private": true,
+  "description": "資産ポートフォリオ（Cloudflare Workers で公開する場合のみ使用）",
+  "scripts": {
+    "build": "node worker/build.mjs",
+    "cf:dev": "node worker/build.mjs && wrangler dev",
+    "cf:deploy": "node worker/build.mjs && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

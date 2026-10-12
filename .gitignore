@@ -21,3 +21,9 @@ supabase-config.js
 # 別プロジェクト（四柱推命サイト）のドキュメント。個人のフォルダパスを含む
 docs/superpowers/plans/2026-06-17-shichu-suimei-site.md
 docs/superpowers/specs/2026-06-17-shichu-suimei-site-design.md
+
+# Cloudflare Workers（公開用ビルドとローカル用シークレット）
+node_modules/
+dist/
+.wrangler/
+.dev.vars
