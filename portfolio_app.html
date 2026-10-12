@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261012b">
+<link rel="stylesheet" href="style.css?v=20261012c">
 </head>
 <body>
 
@@ -65,6 +65,8 @@
       <div class="donut-wrap">
         <svg class="donut" id="donut" viewBox="0 0 520 440"></svg>
       </div>
+      <!-- スマホでタップした項目の詳細 -->
+      <div id="chartDetail" class="chart-detail" hidden></div>
       <div class="slider-row">
         <span class="cap" id="othCap">[その他]にまとめる基準：2.0%以下</span>
         <span>0%</span><input type="range" id="othRange" min="0" max="20" step="0.5" value="2"><span>20%</span>
@@ -123,9 +125,9 @@
     </div>
   </div>
 
-<script src="sectors.js?v=20261012b"></script>
+<script src="sectors.js?v=20261012c"></script>
 <script src="supabase-config.js"></script>
-<script src="supabase.js?v=20261012b"></script>
-<script src="app.js?v=20261012b"></script>
+<script src="supabase.js?v=20261012c"></script>
+<script src="app.js?v=20261012c"></script>
 </body>
 </html>
