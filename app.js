@@ -882,6 +882,213 @@ document.getElementById("reset").addEventListener("click",()=>{
   srcEl.style.color="";
 });
 
+// ===== 資産全体（月次資産Excel＋CSVの合算） =====
+const MA_KEY="kabu_monthly_assets_v1";
+let maLocalWrite=false;     // 起動後にExcelを読み込んだか（DBからの読み戻しで上書きしないため）
+let BT_DB=[];               // DBの保有明細から集計した、日付・証券会社ごとの合計
+const BT_LOCAL=new Map();   // この画面で読み込んだ日（値は集計結果）と削除した日（値はnull）。DBより優先する
+let btCleared=false;        // 履歴クリア後は、DBの読み戻し結果を使わない
+const taSvg=document.getElementById("taSvg");
+const taDetail=document.getElementById("taDetail");
+let taRange=12;             // 表示期間（月数、0=全期間）
+let taW=1040;
+let TBARS=[];               // ホバー・タップ検索用の棒の座標
+let taSel=-1;               // スマホでタップ中の棒（TBARSの添字）
+
+function loadMA(){
+  try{ const a=JSON.parse(localStorage.getItem(MA_KEY)); return Array.isArray(a)?a:[]; }
+  catch{ return []; }
+}
+function saveMA(rows){ try{ localStorage.setItem(MA_KEY,JSON.stringify(rows)); }catch{} }
+
+function brokerTotals(){
+  const out=BT_DB.filter(b=>!BT_LOCAL.has(b.date));
+  for(const v of BT_LOCAL.values()) if(v) out.push(...v);
+  return out;
+}
+// CSVを読み込んだ日（rows）・削除した日（null）を、資産全体の合算に反映する
+function setLocalBrokerDay(day,rows){
+  BT_LOCAL.set(day, rows ? summarizeHoldings(rows.map(r=>({date:day,broker:r.broker,code:r.code,value:r.value}))) : null);
+  renderTotal();
+}
+function taMsg(t){ document.getElementById("taInfo").textContent=t; }
+const yen=v=>"¥"+fmt(Math.round(v));
+const posSum=m=>ASSET_CATS.reduce((s,c)=>s+Math.max(0,m.cats[c.key]),0);
+
+function taTipHTML(m){
+  const src=m.csvDate ? "CSV "+m.csvDate.replace(/-/g,"/")+" ＋ Excel" : "Excelのみ";
+  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b><small>${src}</small></div>`+
+    ASSET_CATS.filter(c=>m.cats[c.key]).map(c=>
+      `<div class="tip-r"><span><span class="tip-dot" style="background:${c.color}"></span>${c.label}</span>`+
+      `<b>${yen(m.cats[c.key])}</b></div>`).join("")+
+    `<div class="tip-r"><span>合計</span><b>${yen(m.total)}</b></div>`;
+}
+
+function taClearSel(){
+  TBARS.forEach(b=>b.g.classList.remove("sel"));
+  taSel=-1;
+  taSvg.classList.remove("has-sel");
+  taDetail.hidden=true;
+}
+
+function renderMix(m){
+  const parts=ASSET_CATS.map(c=>({c,v:Math.max(0,m.cats[c.key])})).filter(x=>x.v>0);
+  const sum=parts.reduce((s,x)=>s+x.v,0)||1;
+  document.getElementById("taMix").innerHTML=
+    `<div class="ta-mixbar">${parts.map(x=>`<span style="width:${x.v/sum*100}%;background:${x.c.color}"></span>`).join("")}</div>`+
+    `<div class="ta-mixlist">${parts.map(x=>
+      `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
+      `<b>${yen(x.v)}</b><em>${(x.v/sum*100).toFixed(1)}%</em></div>`).join("")}</div>`;
+}
+
+function renderTotal(){
+  const all=combineMonthly(loadMA(),brokerTotals());
+  taClearSel();
+  taSvg.innerHTML=""; TBARS=[];
+  const sp=histNarrow.matches;
+  const W=sp?420:1040, H=sp?300:280, padL=sp?8:24, padR=sp?86:92, padT=14, padB=sp?40:44;
+  const fs=sp?14:11.5;
+  taW=W;
+  taSvg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  const dEl=document.getElementById("taDate"), tEl=document.getElementById("taTotal"),
+        fEl=document.getElementById("taDiff"), pEl=document.getElementById("taDiffP");
+  if(!all.length){
+    dEl.textContent="–"; tEl.textContent="–"; fEl.textContent="–"; pEl.textContent="";
+    fEl.className=""; pEl.className="";
+    document.getElementById("taRange").textContent="";
+    document.getElementById("taMix").innerHTML="";
+    svgText({x:W/2,y:H/2,fill:"#8a909c","font-size":14,"font-weight":600,
+      "font-family":"Zen Kaku Gothic New","text-anchor":"middle",
+      t:"資産Excelを読み込むと、預金なども含めた資産全体を表示します"},taSvg);
+    return;
+  }
+  const last=all[all.length-1], prev=all[all.length-2];
+  dEl.textContent=last.date.replace(/-/g,"/");
+  tEl.textContent=fmt(Math.round(last.total))+"円";
+  if(prev){
+    const d=last.total-prev.total, pct=prev.total?d/prev.total*100:0, sg=d>=0?"+":"";
+    fEl.textContent=sg+fmt(Math.round(d))+"円";
+    pEl.textContent=sg+pct.toFixed(1)+"%";
+    fEl.className=pEl.className=d>=0?"pos":"neg";
+  }else{
+    fEl.textContent="–"; pEl.textContent=""; fEl.className=""; pEl.className="";
+  }
+  renderMix(last);
+  // 期間は最新の記録日から数える（Excelの更新が止まっていても空にならないように）
+  let list=all;
+  if(taRange){
+    const [y,m,d]=last.date.split("-").map(Number);
+    const cut=isoLocal(new Date(y,m-1-taRange,d).getTime());
+    list=all.filter(x=>x.date>cut);
+  }
+  document.getElementById("taRange").textContent=
+    list[0].date.replace(/-/g,"/")+" ～ "+last.date.replace(/-/g,"/");
+  const top=niceCeil(Math.max(...list.map(posSum))*1.05);
+  const Y=v=>padT+(1-v/top)*(H-padT-padB);
+  for(let i=0;i<=4;i++){
+    const v=top*i/4, y=Y(v);
+    const ln=document.createElementNS(NS,"line");
+    ln.setAttribute("x1",padL);ln.setAttribute("x2",W-padR);
+    ln.setAttribute("y1",y);ln.setAttribute("y2",y);
+    ln.setAttribute("stroke","#1c2030");
+    taSvg.appendChild(ln);
+    svgText({x:W-padR+8,y,fill:"#7e8496","font-size":fs,"font-family":"Sora",
+      "text-anchor":"start","dominant-baseline":"central",
+      t: v===0 ? "0円" : fmt(Math.round(v/10000))+"万円"},taSvg);
+  }
+  const slot=(W-padL-padR)/list.length, bw=Math.max(2,Math.min(36,slot*0.66));
+  list.forEach((m,i)=>{
+    const cx=padL+slot*(i+0.5);
+    const g=document.createElementNS(NS,"g");
+    g.setAttribute("class","ta-bar");
+    let acc=0;
+    for(const c of ASSET_CATS){
+      const v=Math.max(0,m.cats[c.key]);   // 負の値（SBI預金の差し引き）は棒に描かない
+      if(!v) continue;
+      const r=document.createElementNS(NS,"rect");
+      r.setAttribute("x",cx-bw/2); r.setAttribute("width",bw);
+      r.setAttribute("y",Y(acc+v)); r.setAttribute("height",Math.max(0,Y(acc)-Y(acc+v)));
+      r.setAttribute("fill",c.color);
+      g.appendChild(r);
+      acc+=v;
+    }
+    if(m.csvDate){                          // CSVで置き換えた月の印
+      const dot=document.createElementNS(NS,"circle");
+      dot.setAttribute("cx",cx); dot.setAttribute("cy",H-padB+8); dot.setAttribute("r",2.5);
+      dot.setAttribute("fill","#e3c477");
+      g.appendChild(dot);
+    }
+    taSvg.appendChild(g);
+    TBARS.push({x:cx,g,m});
+  });
+  const step=Math.max(1,Math.ceil(list.length/(sp?4:6)));
+  list.forEach((m,i)=>{
+    if(i%step!==0 && i!==list.length-1) return;
+    svgText({x:padL+slot*(i+0.5),y:H-padB+26,fill:"#7e8496","font-size":fs-0.5,"font-family":"Sora",
+      "text-anchor":"middle",t:m.date.slice(2,7).replace("-","/")},taSvg);
+  });
+}
+
+function taNearest(e){
+  const r=taSvg.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width*taW;
+  let best=null;
+  for(const b of TBARS) if(!best||Math.abs(b.x-x)<Math.abs(best.x-x)) best=b;
+  return best;
+}
+taSvg.addEventListener("mousemove",e=>{
+  if(touchUI.matches||!TBARS.length) return;
+  tipEl.innerHTML=taTipHTML(taNearest(e).m);
+  tipEl.style.display="block";
+  moveTip(e);
+});
+taSvg.addEventListener("mouseleave",()=>{ if(!touchUI.matches) hideTip(); });
+// スマホ：タップした月以外を暗くし、グラフ下に内訳を出す。同じ月をもう一度タップで解除
+taSvg.addEventListener("click",e=>{
+  if(!touchUI.matches||!TBARS.length) return;
+  e.stopPropagation();                      // 外側タップの解除処理に届かせない
+  const b=taNearest(e), i=TBARS.indexOf(b);
+  if(i===taSel){ taClearSel(); return; }
+  taClearSel();
+  taSel=i;
+  b.g.classList.add("sel");
+  taSvg.classList.add("has-sel");
+  taDetail.innerHTML=taTipHTML(b.m);
+  taDetail.hidden=false;
+});
+document.addEventListener("click",()=>{ if(taSel>=0) taClearSel(); });
+
+document.querySelectorAll("#taSeg button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll("#taSeg button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    taRange=parseInt(b.dataset.r,10)||0;
+    renderTotal();
+  });
+});
+
+document.getElementById("xlsxFile").addEventListener("change",async e=>{
+  const f=e.target.files[0];
+  e.target.value="";                        // 同じファイルを選び直しても反応させる
+  if(!f) return;
+  if(!window.XLSX){ taMsg("Excel読み込み用のライブラリを読み込めませんでした（ネット接続を確認してください）"); return; }
+  let res;
+  try{
+    const wb=XLSX.read(await f.arrayBuffer(),{cellDates:true});
+    res=parseAssetSheets(workbookToSheets(wb));
+  }catch(err){
+    console.warn("[assets] failed to read workbook", err);
+    taMsg("Excelファイルを読み込めませんでした");
+    return;
+  }
+  if(!res.rows.length){ taMsg("『〇〇〇〇年度　資産』シートが見つかりませんでした"); return; }
+  saveMA(res.rows);
+  maLocalWrite=true;
+  renderTotal();
+  taMsg(res.years+"年度分・"+res.months+"か月を取り込みました");
+  sbSaveMonthlyAssets(res.rows);            // DB保存は待たない（失敗時は「DB同期失敗」表示）
+});
+
 // ===== 資産推移（CSV読込時にブラウザへ自動記録） =====
 const HIST_KEY="kabu_asset_history_v1";
 let histLocalWrite=false;   // 起動後に手元で履歴を書き換えたか（DBからの読み戻しで上書きしないため）
@@ -931,6 +1138,7 @@ function saveSnapshot(dateStr){
   renderHistory();
   histLocalWrite=true;                             // 読み戻しより手元の読み込みを優先する
   sbSaveSnapshot({date:day,total,cost,rows:RAW});   // DB保存は待たない（描画をネットワークに引きずられないため）
+  setLocalBrokerDay(day,RAW);                      // 資産全体の合算にもすぐ反映する
 }
 
 let histRange=0;   // 表示期間（月数、0=全期間）
@@ -1101,14 +1309,16 @@ document.getElementById("histClear").addEventListener("click",()=>{
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     curDate="";
     buildDateSelector(loadHist());                   // 消した日付を選べないようにする
+    BT_DB=[]; BT_LOCAL.clear(); btCleared=true;      // 資産全体の合算からもCSVを外す
+    renderTotal();
     sbDeleteAll();
   }
 });
 
 // 期間切替（直近3ヶ月 / 半年 / 1年 / 全期間）
-document.querySelectorAll(".hseg button").forEach(b=>{
+document.querySelectorAll("#histSeg button").forEach(b=>{
   b.addEventListener("click",()=>{
-    document.querySelectorAll(".hseg button").forEach(x=>x.classList.remove("on"));
+    document.querySelectorAll("#histSeg button").forEach(x=>x.classList.remove("on"));
     b.classList.add("on");
     histRange=parseInt(b.dataset.r,10)||0;
     renderHistory();
@@ -1149,6 +1359,7 @@ function delHistoryDay(day){
   showSeq++;                                       // 取得中の表示切り替えを無効化する
   if(curDate===day) curDate="";
   buildDateSelector(loadHist());                   // 消した日付を選べないようにする
+  setLocalBrokerDay(day,null);                     // 資産全体の合算からも外す
   sbDeleteDay(day);
   return true;
 }
@@ -1239,4 +1450,17 @@ buildDateSelector(loadHist());
   renderHistory();
   buildDateSelector(rows);
   showDate(rows[rows.length-1].date);   // 最新日を表示する
+})();
+
+// ===== 資産全体の起動時表示と読み戻し =====
+histNarrow.addEventListener("change",()=>renderTotal());
+renderTotal();
+
+// 月次資産と保有明細をSupabaseから読み戻す。localStorageの月次資産は同期キャッシュ扱い
+(async function hydrateTotalFromDB(){
+  if(!sbEnabled()) return;
+  const [ma,hold]=await Promise.all([sbLoadMonthlyAssets(),sbLoadAllHoldings()]);
+  if(ma&&ma.length&&!maLocalWrite) saveMA(ma);   // DBが空・失敗なら手元のキャッシュを残す
+  if(hold&&!btCleared) BT_DB=summarizeHoldings(hold);
+  renderTotal();
 })();
