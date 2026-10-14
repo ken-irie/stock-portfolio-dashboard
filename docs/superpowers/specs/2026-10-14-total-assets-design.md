@@ -94,9 +94,9 @@ RLSの方針は既存の `snapshots` / `holdings` と同じ（anonに全許可�
 |---|---|---|
 | `sbSaveMonthlyAssets(rows)` | `Promise<boolean>` | 全件入れ替えで保存 |
 | `sbLoadMonthlyAssets()` | `Promise<Array\|null>` | `[{date, kind, item, amount}]` を返す。失敗時は `null` |
-| `sbLoadBrokerTotals()` | `Promise<Array\|null>` | CSVの日ごと・証券会社ごとの合計と外貨預り金。`[{date, broker, total, usdCash}]` |
+| `sbLoadAllHoldings()` | `Promise<Array\|null>` | 全日付の保有明細を `[{date, broker, code, value}]` で返す |
 
-`sbLoadBrokerTotals()` は `holdings` から `snapshot_date,broker,code,value` を1回で取得し、ブラウザで集計する（外貨預り金は `code === "現金"` の行）。
+日付・証券会社ごとの合計と外貨預り金（`code === "現金"` の行）の集計は、`assets.js` の純粋関数 `summarizeHoldings()` で行う。CSVを読み込んだ直後にも、DBを経由せず同じ集計を使うため。
 
 ### 4.4 公開版（Cloudflare Workers）
 

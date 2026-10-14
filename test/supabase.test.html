@@ -366,6 +366,81 @@ test("中継モード: 中継先に送り、キーのヘッダを付けない", 
   });
 });
 
+// ---- 月次資産・保有明細の一括取得 ----
+const rowsOf=(n,f)=>Array.from({length:n},(_,i)=>f(i));
+
+test("sbLoadMonthlyAssets: 空のページが返るまで続けて読み、形を変換する", async()=>{
+  const p1=rowsOf(1000,i=>({record_date:"2026-03-29",kind:"現金",item:"財布"+i,amount:"1"}));
+  const p2=[{record_date:"2026-04-28",kind:"現金",item:"現ナマ",amount:"230000"}];
+  await withEnv(CFG,[{body:p1},{body:p2},{body:[]}], async(mf)=>{
+    const r=await sbLoadMonthlyAssets();
+    eq(r.length,1001);
+    eq(r[1000],{date:"2026-04-28",kind:"現金",item:"現ナマ",amount:230000});
+    eq(mf.calls.length,3);
+    assert(mf.calls[0].url.includes("monthly_assets?select=record_date,kind,item,amount&order=record_date.asc,kind.asc,item.asc"), mf.calls[0].url);
+    assert(mf.calls[0].url.endsWith("&limit=1000&offset=0"), mf.calls[0].url);
+    assert(mf.calls[1].url.endsWith("&offset=1000"), mf.calls[1].url);
+    assert(mf.calls[2].url.endsWith("&offset=1001"), mf.calls[2].url);
+    eq(statText(),"DB同期済");
+  });
+});
+
+test("sbLoadMonthlyAssets: 途中のページで失敗したらnull", async()=>{
+  await withEnv(CFG,[{body:rowsOf(1000,()=>({record_date:"2026-03-29",kind:"a",item:"b",amount:1}))},{ok:false,status:500}], async()=>{
+    eq(await sbLoadMonthlyAssets(),null);
+    eq(statText(),"DB同期失敗");
+  });
+});
+
+test("sbLoadMonthlyAssets / sbLoadAllHoldings: 未設定なら通信せずnull", async()=>{
+  await withEnv(null,[], async(mf)=>{
+    eq(await sbLoadMonthlyAssets(),null);
+    eq(await sbLoadAllHoldings(),null);
+    eq(mf.calls.length,0);
+  });
+});
+
+test("sbLoadAllHoldings: 必要な列だけを日付順に取り、欠損を空文字に寄せる", async()=>{
+  await withEnv(CFG,[{body:[
+    {snapshot_date:"2026-09-15",broker:"SBI",code:"現金",value:"120"},
+    {snapshot_date:"2026-09-15",broker:null,code:null,value:"5"},
+  ]},{body:[]}], async(mf)=>{
+    eq(await sbLoadAllHoldings(),[
+      {date:"2026-09-15",broker:"SBI",code:"現金",value:120},
+      {date:"2026-09-15",broker:"",code:"",value:5},
+    ]);
+    assert(mf.calls[0].url.includes("holdings?select=snapshot_date,broker,code,value&order=snapshot_date.asc,id.asc&limit=1000&offset=0"), mf.calls[0].url);
+  });
+});
+
+test("sbSaveMonthlyAssets: 全件消してから500行ずつ入れる", async()=>{
+  const rows=rowsOf(1200,i=>({date:"2026-03-29",kind:"現金",item:"x"+i,amount:i}));
+  await withEnv(CFG,[{},{},{},{}], async(mf)=>{
+    eq(await sbSaveMonthlyAssets(rows),true);
+    eq(mf.calls.map(c=>c.method),["DELETE","POST","POST","POST"]);
+    assert(mf.calls[0].url.endsWith("monthly_assets?record_date=gt.1900-01-01"), mf.calls[0].url);
+    const b1=JSON.parse(mf.calls[1].body), b3=JSON.parse(mf.calls[3].body);
+    eq(b1.length,500); eq(b3.length,200);
+    eq(b1[0],{record_date:"2026-03-29",kind:"現金",item:"x0",amount:0});
+    eq(statText(),"DB同期済");
+  });
+});
+
+test("sbSaveMonthlyAssets: 削除に失敗したら入れずにfalse", async()=>{
+  await withEnv(CFG,[{ok:false,status:500}], async(mf)=>{
+    eq(await sbSaveMonthlyAssets([{date:"2026-03-29",kind:"a",item:"b",amount:1}]),false);
+    eq(mf.calls.length,1);
+    eq(statText(),"DB同期失敗");
+  });
+});
+
+test("sbSaveMonthlyAssets: 未設定なら通信せずfalse", async()=>{
+  await withEnv(null,[], async(mf)=>{
+    eq(await sbSaveMonthlyAssets([]),false);
+    eq(mf.calls.length,0);
+  });
+});
+
 // === /tests ===
 
 (async function run(){
