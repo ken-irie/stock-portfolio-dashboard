@@ -1460,3 +1460,14 @@ renderTotal();
   if(!ma) sbStatus("error");                     // 後から終わった読み込みの「成功」で失敗表示が消えないよう、最後に出す
   renderTotal();
 })();
+
+// ===== ページのタブ（初期表示はポートフォリオ構成） =====
+document.querySelectorAll("#pageTabs button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll("#pageTabs button").forEach(x=>x.classList.toggle("on",x===b));
+    document.querySelectorAll(".tab-panel").forEach(p=>{ p.hidden = p.dataset.panel!==b.dataset.tab; });
+    hideTip();                                   // 前のタブのツールチップや選択を残さない
+    if(selEl) clearSel();
+    if(taSel>=0) taClearSel();
+  });
+});
