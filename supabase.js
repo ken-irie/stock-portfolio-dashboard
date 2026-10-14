@@ -221,8 +221,9 @@
     return rows.map(r=>({date:r.snapshot_date, broker:r.broker||"", code:r.code||"", value:Number(r.value)}));
   }
 
-  const CHUNK=500;
-  // 月次資産を保存する。ブックに全年度が入っているので、差分を取らずに全件入れ替える
+  // 月次資産を保存する。ブックに全年度が入っているので、差分を取らずに全件入れ替える。
+  // INSERTは1回にまとめる（1文＝1トランザクションなので、途中までしか入らない状態にならない。
+  // 一部だけ残ると、次回起動時にその欠けたデータで手元のキャッシュを上書きしてしまう）
   async function sbSaveMonthlyAssets(rows){
     if(!sbEnabled()) return false;
     const del=await sbFetch("monthly_assets?record_date=gt.1900-01-01", {
@@ -231,11 +232,11 @@
     });
     if(!del){ sbStatus("error"); return false; }
     const body=(rows||[]).map(r=>({record_date:r.date, kind:r.kind, item:r.item, amount:r.amount}));
-    for(let i=0;i<body.length;i+=CHUNK){
+    if(body.length){
       const ins=await sbFetch("monthly_assets", {
         method:"POST",
         headers:{"Prefer":"return=minimal"},
-        body:body.slice(i,i+CHUNK)
+        body
       });
       if(!ins){ sbStatus("error"); return false; }
     }
