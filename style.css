@@ -272,6 +272,10 @@
   #taSvg .ta-prov rect{opacity:.45;}   /* 最後の記録日より後のCSVで作った暫定の棒 */
   .tip-r .tip-dot{display:inline-block;margin-right:6px;vertical-align:middle;}
   .ta-mix{padding:0 28px 22px;}
+  .ta-mixhead{font-size:12px;color:var(--muted);margin-bottom:8px;}
+  /* 内訳を開ける銘柄の印（銘柄名の横）。.row .nm span の display:block を打ち消す */
+  .row .nm b .caret{display:inline-block;font-size:15px;color:#7f8794;margin:0 0 0 6px;vertical-align:-1px;}
+  .row .nm b .caret.open{color:var(--gold);}
   .ta-mixbar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--line-soft);}
   .ta-mixlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 24px;margin-top:14px;}
   .ta-mixrow{display:flex;align-items:center;gap:8px;font-size:13px;}
@@ -331,6 +335,11 @@
   .modal-box textarea:focus{border-color:rgba(227,196,119,.5);}
   .modal-foot{padding:0 20px 18px;display:flex;justify-content:flex-end;gap:10px;}
 
+  /* ボタンが1行に入りきらない幅では、上部のバーを折り返す */
+  @media(max-width:1120px){
+    .appbar{flex-wrap:wrap;row-gap:10px;}
+    .appbar .spacer{flex-basis:100%;height:0;}   /* 1行目はタイトルと記録、2行目にボタンをまとめる */
+  }
   @media(max-width:980px){
     .grid{grid-template-columns:1fr;}
     .grid > .card:first-child{order:-1;}
