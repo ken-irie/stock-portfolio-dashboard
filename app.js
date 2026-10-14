@@ -74,11 +74,11 @@ function showTip(e,d,total){
   moveTip(e);
 }
 function hideTip(){ tipEl.style.display="none"; }
-// 資産推移グラフ用カード（日付・資産残高・評価損益）
+// 証券の評価額推移グラフ用カード（日付・評価額・評価損益）
 function histTipHTML(h){
   const pl=h.total-h.cost, pct=h.cost?pl/h.cost*100:0, sg=pl>=0?"+":"";
   return `<div class="tip-h"><b>${h.date.replace(/-/g,"/")}</b></div>`+
-    `<div class="tip-r"><span>資産残高</span><b>¥${fmt(h.total)}</b></div>`+
+    `<div class="tip-r"><span>評価額</span><b>¥${fmt(h.total)}</b></div>`+
     `<div class="tip-r"><span>評価損益</span>`+
     `<b class="${pl>=0?'pos':'neg'}">${sg}¥${fmt(pl)} (${sg}${pct.toFixed(2)}%)</b></div>`;
 }
@@ -511,7 +511,7 @@ function renderDonut(data,total,totalCost,totalPL,totalPct){
   drawSide(sides.L); drawSide(sides.R);
   // 中央
   const sg=totalPL>=0?"+":"", col=totalPL>=0?"#3ddc97":"#ff6b7a";
-  svgText({x:cx,y:cy-26,fill:"#b9bfcc","font-size":14,"font-weight":600,"font-family":"Zen Kaku Gothic New","text-anchor":"middle",t:"総資産評価額"});
+  svgText({x:cx,y:cy-26,fill:"#b9bfcc","font-size":14,"font-weight":600,"font-family":"Zen Kaku Gothic New","text-anchor":"middle",t:"証券の評価額"});
   svgText({x:cx,y:cy+4,fill:"#f6f1e4","font-size":27,"font-weight":800,"font-family":"Sora","text-anchor":"middle",t:fmt(total)+" 円"});
   svgText({x:cx,y:cy+30,fill:col,"font-size":16,"font-weight":700,"font-family":"Sora","text-anchor":"middle",t:`${sg}${fmt(totalPL)}円`});
   svgText({x:cx,y:cy+50,fill:col,"font-size":15,"font-weight":700,"font-family":"Sora","text-anchor":"middle",t:`(${sg}${totalPct.toFixed(1)}%)`});
@@ -576,7 +576,7 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
   const sign=totalPL>=0?"+":"";
   const empty=ALL.length===0;
   document.getElementById("summary").innerHTML=`
-    <div class="hero"><div class="lab">${curFilter==="all"?"総資産評価額":"絞込 評価額"}</div><div class="hero-num">${empty?'–':'¥'+fmt(total)}</div></div>
+    <div class="hero"><div class="lab">${curFilter==="all"?"証券の評価額":"絞込 評価額"}</div><div class="hero-num">${empty?'–':'¥'+fmt(total)}</div></div>
     <div class="metrics">
       <div class="stat"><div class="lab">取得金額</div><div class="num">${empty?'–':'¥'+fmt(totalCost)}</div></div>
       <div class="stat"><div class="lab">評価損益</div><div class="num ${totalPL>=0?'pos':'neg'}">${empty?'–':sign+'¥'+fmt(totalPL)}</div></div>
@@ -625,9 +625,9 @@ function renderSidebar(data,total,totalCost,totalPL,totalPct){
     const openable=(d.code==="group"||d.multi)&&!child;
     el.className="row"+(child?" child":"")+(openable?" clickable":"");
     el.innerHTML=`
-      <span class="rank">${openable?`<span class="caret${expanded?" open":""}">›</span>`:label}</span>
+      <span class="rank">${label}</span>
       <span class="dot" style="background:${d.color}"></span>
-      <div class="nm"><b>${esc(d.name)}</b><span>${sub}</span></div>
+      <div class="nm"><b>${esc(d.name)}${openable?`<span class="caret${expanded?" open":""}">›</span>`:""}</b><span>${sub}</span></div>
       <div class="barwrap"><div class="bar"><i style="width:${w}%;background:${d.color}"></i></div></div>
       <span class="pct-chip">${pct}%</span>
       <div class="val"><b>¥${fmt(d.value)}</b>
@@ -927,6 +927,7 @@ function renderMix(m){
   const parts=ASSET_CATS.map(c=>({c,v:Math.max(0,m.cats[c.key])})).filter(x=>x.v>0);
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
+    `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳</div>`+
     `<div class="ta-mixbar">${parts.map(x=>`<span style="width:${x.v/sum*100}%;background:${x.c.color}"></span>`).join("")}</div>`+
     `<div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
@@ -1142,7 +1143,7 @@ function histFiltered(){
   return hist.filter(h=>h.date>=cut);
 }
 
-// 詳細バー（日付・資産残高・評価損益）の表示更新
+// 詳細バー（日付・評価額・評価損益）の表示更新
 function histShow(h){
   const dEl=document.getElementById("hDate"),
         tEl=document.getElementById("hTotal"),
@@ -1199,7 +1200,7 @@ function renderHistory(){
     svgText({x:W/2,y:H/2,fill:"#8a909c","font-size":14,"font-weight":600,
       "font-family":"Zen Kaku Gothic New","text-anchor":"middle",
       t: all.length ? "この期間の記録はありません"
-                    : "CSVを読み込むと自動で記録され、資産の推移がここに表示されます"},histSvg);
+                    : "CSVを読み込むと自動で記録され、証券の評価額推移がここに表示されます"},histSvg);
     return;
   }
   const last=hist[hist.length-1];
@@ -1228,11 +1229,15 @@ function renderHistory(){
   }
   // 日付ラベル（YY/MM・間引いて最大6個程度）
   const step=Math.max(1,Math.ceil(hist.length/(sp?4:6)));
+  let prevLabel="";
   hist.forEach((h,i)=>{
     if(i%step!==0 && i!==hist.length-1) return;
+    const lb=h.date.slice(2,7).replace("-","/");
+    if(lb===prevLabel) return;                     // 同じ月に記録が多いと、同じラベルが並ぶため
+    prevLabel=lb;
     svgText({x:X(h),y:H-padB+20,fill:"#7e8496","font-size":fs-0.5,"font-family":"Sora",
       // 両端の日付は内側に寄せて、枠からはみ出さないようにする
-      "text-anchor":i===0?"start":i===hist.length-1?"end":"middle",t:h.date.slice(2,7).replace("-","/")},histSvg);
+      "text-anchor":i===0?"start":i===hist.length-1?"end":"middle",t:lb},histSvg);
   });
   const y0=Y(0);
   const ptsT=hist.map(h=>`${X(h)},${Y(h.total)}`);
@@ -1292,7 +1297,7 @@ histNarrow.addEventListener("change",()=>renderHistory());
 // 履歴クリア
 document.getElementById("histClear").addEventListener("click",()=>{
   if(!loadHist().length) return;
-  if(confirm("資産推移の記録をすべて削除しますか？（Supabaseの記録も削除されます）")){
+  if(confirm("証券の評価額推移の記録をすべて削除しますか？（保存済みの記録も削除されます）")){
     showSeq++;                                       // 取得中の表示切り替えを無効化する
     localStorage.removeItem(HIST_KEY);
     renderHistory();
@@ -1359,7 +1364,7 @@ function delHistoryDay(day){
   if(!m) return;
   const day=m[1];
   if(loadHist().some(x=>x.date===day)){
-    if(confirm(day+" の資産推移の記録を削除しますか？")){
+    if(confirm(day+" の証券の評価額推移の記録を削除しますか？")){
       delHistoryDay(day);
       alert(day+" の記録を削除しました。");
     }
@@ -1384,7 +1389,7 @@ function buildDateSelector(hist){
   for(let i=hist.length-1;i>=0;i--){          // 新しい日付を上に出す
     const h=hist[i];
     HIST_BY_DATE.set(h.date,h);
-    opts.push(`<option value="${h.date}">${h.date}${h.n?"":"（明細なし）"}</option>`);
+    opts.push(`<option value="${h.date}">${h.date.replace(/-/g,"/")}${h.n?"":"（明細なし）"}</option>`);
   }
   sel.innerHTML=opts.join("");
   sel.hidden=false;
@@ -1393,14 +1398,14 @@ function buildDateSelector(hist){
 // その日の表示を画面に反映する
 function applyDateView(date,rows,h){
   listEmptyMsg = rows.length ? LIST_EMPTY_DEFAULT
-    : "この日の保有明細は記録されていません。金額は上の資産推移で確認できます";
+    : "この日の保有明細は記録されていません。金額は下の証券の評価額推移で確認できます";
   loadedNames=[]; LOADED.clear();   // CSV由来の状態は持ち越さない
   setData(rows);                    // RAW もここで入れ替わる
   curDate=date;
   const sel=document.getElementById("dateSel");
   if(sel) sel.value=date;
   const srcEl=document.getElementById("src");
-  srcEl.textContent=date.replace(/-/g,"/")+" の記録（Supabase）";
+  srcEl.textContent=date.replace(/-/g,"/")+" の記録（保存済み）";
   srcEl.style.color="#dfe3ea";
   histShow(h);                      // 推移カードの詳細バーも同じ日付に合わせる
 }
