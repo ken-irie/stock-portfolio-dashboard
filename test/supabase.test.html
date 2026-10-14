@@ -366,7 +366,7 @@ test("中継モード: 中継先に送り、キーのヘッダを付けない", 
   });
 });
 
-// ---- 月次資産・保有明細の一括取得 ----
+// ---- 月次資産 ----
 const rowsOf=(n,f)=>Array.from({length:n},(_,i)=>f(i));
 
 test("sbLoadMonthlyAssets: 空のページが返るまで続けて読み、形を変換する", async()=>{
@@ -392,25 +392,15 @@ test("sbLoadMonthlyAssets: 途中のページで失敗したらnull", async()=>{
   });
 });
 
-test("sbLoadMonthlyAssets / sbLoadAllHoldings: 未設定なら通信せずnull", async()=>{
+test("sbLoadMonthlyAssets: 未設定なら通信せずnull", async()=>{
   await withEnv(null,[], async(mf)=>{
     eq(await sbLoadMonthlyAssets(),null);
-    eq(await sbLoadAllHoldings(),null);
     eq(mf.calls.length,0);
   });
 });
 
-test("sbLoadAllHoldings: 必要な列だけを日付順に取り、欠損を空文字に寄せる", async()=>{
-  await withEnv(CFG,[{body:[
-    {snapshot_date:"2026-09-15",broker:"SBI",code:"現金",value:"120"},
-    {snapshot_date:"2026-09-15",broker:null,code:null,value:"5"},
-  ]},{body:[]}], async(mf)=>{
-    eq(await sbLoadAllHoldings(),[
-      {date:"2026-09-15",broker:"SBI",code:"現金",value:120},
-      {date:"2026-09-15",broker:"",code:"",value:5},
-    ]);
-    assert(mf.calls[0].url.includes("holdings?select=snapshot_date,broker,code,value&order=snapshot_date.asc,id.asc&limit=1000&offset=0"), mf.calls[0].url);
-  });
+test("sbLoadAllHoldings: 資産全体はExcelだけで計算するので公開しない", ()=>{
+  eq(typeof window.sbLoadAllHoldings,"undefined");
 });
 
 test("sbSaveMonthlyAssets: 全件消してから1回のPOSTでまとめて入れる（途中までしか入らない状態を作らない）", async()=>{

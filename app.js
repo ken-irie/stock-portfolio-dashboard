@@ -148,11 +148,7 @@ function parseRakuten(rows){
     if(r[0]==="種別"){ inTbl=true; continue; }
     if(!inTbl) continue;
     if(!r[0]||r[0].startsWith("■")) { if(r[0]&&r[0].startsWith("■")) break; continue; }
-    if(r[0]==="外貨預り金"){                      // 外貨預り金（現金）も資産に含める
-      const cv=num(r[14]);
-      if(cv>0) out.push({ name:((r[2]||"米ドル").trim())+"（現金）", code:"現金", value:cv, cost:cv, cat:"cash", acct:"外貨預り金" });
-      continue;
-    }
+    if(r[0]==="外貨預り金") continue;             // 外貨預り金（現金）は月次資産Excelの預金側で管理するので取り込まない
     const cat=catMap[r[0]];
     if(!cat) continue;
     const value=num(r[14]), pl=num(r[16]);
@@ -196,7 +192,7 @@ function parseSBI(rows){
   return out;
 }
 
-// SBI外国株形式。株式＋預り金（外貨現金）に対応。外貨債券セクションはスキップ。
+// SBI外国株形式。株式・外貨債券を取り込む。預り金（外貨現金）は月次資産Excelの預金側で管理するので取り込まない。
 // 旧形式（株式一覧のみ）は先頭が株式ヘッダーなので stock で開始してそのまま動く。
 function parseSBIForeign(rows){
   const out=[];
@@ -214,9 +210,6 @@ function parseSBIForeign(rows){
       if(r.length<13) continue;
       const value=num(r[12]), cost=num(r[10]);   // 評価額_円換算 / 取得金額_円換算
       if(value>0) out.push({ name:first, code:(r[1]||"").trim(), value, cost, cat:"us", acct:"外国株式", qty:num(r[5]) });
-    }else if(mode==="cash"){
-      const value=num(r[2]);   // 通貨,保有数量,円換算評価額
-      if(value>0) out.push({ name:first+"（現金）", code:"現金", value, cost:value, cat:"cash", acct:"外貨預り金" });
     }else if(mode==="bond"){
       // 銘柄名,保有額面_USD,取得単価,取得為替,外貨建評価額_USD,円換算評価額
       const value=num(r[5]);
@@ -230,7 +223,7 @@ function parseSBIForeign(rows){
 }
 
 // SBI外国株「保有証券一覧」画面をコピーしたテキストを取り込む（GPT変換を不要にする）
-// 株式・外貨建債券・預り金の3セクションに対応。
+// 株式・外貨建債券を取り込む。預り金（外貨現金）は月次資産Excelの預金側で管理するので読み飛ばす。
 function parseSBIForeignPaste(text){
   // 不可視文字・特殊空白を除去/正規化（コードポイントで判定。貼り付け失敗の主因）
   text=String(text).replace(/[\s\S]/g,ch=>{
@@ -298,19 +291,6 @@ function parseSBIForeignPaste(text){
       continue;
     }
 
-    // 預り金: 通貨名の行を起点に、円換算評価額を拾う
-    if(mode==="cash"){
-      if(HEADER.test(ln) || usdOf(ln)!==null || yenOf(ln)!==null || plainNum(ln)!==null) continue;
-      const cur=nameOf(ln); let valYen=null, j=i+1;
-      for(; j<lines.length; j++){
-        const l=lines[j];
-        const y=yenOf(l); if(y!==null){ valYen=y; break; }   // 円換算評価額を拾って終了
-        if(MKT.test(l)) break;
-      }
-      if(valYen>0) out.push({ name:cur+"（現金）", code:"現金", value:valYen, cost:valYen, cat:"cash", acct:"外貨預り金" });
-      i=j;
-      continue;
-    }
   }
   out.forEach(d=>d.broker="SBI");
   return out;
@@ -882,12 +862,9 @@ document.getElementById("reset").addEventListener("click",()=>{
   srcEl.style.color="";
 });
 
-// ===== 資産全体（月次資産Excel＋CSVの合算） =====
+// ===== 資産全体（月次資産Excel） =====
 const MA_KEY="kabu_monthly_assets_v1";
 let maLocalWrite=false;     // 起動後にExcelを読み込んだか（DBからの読み戻しで上書きしないため）
-let BT_DB=[];               // DBの保有明細から集計した、日付・証券会社ごとの合計
-const BT_LOCAL=new Map();   // この画面で読み込んだ日（値は集計結果）と削除した日（値はnull）。DBより優先する
-let btCleared=false;        // 履歴クリア後は、DBの読み戻し結果を使わない
 const taSvg=document.getElementById("taSvg");
 const taDetail=document.getElementById("taDetail");
 let taRange=12;             // 表示期間（月数、0=全期間）
@@ -901,23 +878,12 @@ function loadMA(){
 }
 function saveMA(rows){ try{ localStorage.setItem(MA_KEY,JSON.stringify(rows)); }catch{} }
 
-function brokerTotals(){
-  const out=BT_DB.filter(b=>!BT_LOCAL.has(b.date));
-  for(const v of BT_LOCAL.values()) if(v) out.push(...v);
-  return out;
-}
-// CSVを読み込んだ日（rows）・削除した日（null）を、資産全体の合算に反映する
-function setLocalBrokerDay(day,rows){
-  BT_LOCAL.set(day, rows ? summarizeHoldings(rows.map(r=>({date:day,broker:r.broker,code:r.code,value:r.value}))) : null);
-  renderTotal();
-}
 function taMsg(t){ document.getElementById("taInfo").textContent=t; }
 const yen=v=>"¥"+fmt(Math.round(v));
 const posSum=m=>ASSET_CATS.reduce((s,c)=>s+Math.max(0,m.cats[c.key]),0);
 
 function taTipHTML(m){
-  const src=m.csvDate ? "CSV "+m.csvDate.replace(/-/g,"/")+" ＋ Excel" : "Excelのみ";
-  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b><small>${src}</small></div>`+
+  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b></div>`+
     ASSET_CATS.filter(c=>m.cats[c.key]).map(c=>
       `<div class="tip-r"><span><span class="tip-dot" style="background:${c.color}"></span>${c.label}</span>`+
       `<b>${yen(m.cats[c.key])}</b></div>`).join("")+
@@ -942,7 +908,7 @@ function renderMix(m){
 }
 
 function renderTotal(){
-  const all=combineMonthly(loadMA(),brokerTotals());
+  const all=combineMonthly(loadMA());
   taClearSel();
   taSvg.innerHTML=""; TBARS=[];
   const sp=histNarrow.matches;
@@ -1011,12 +977,6 @@ function renderTotal(){
       r.setAttribute("fill",c.color);
       g.appendChild(r);
       acc+=v;
-    }
-    if(m.csvDate){                          // CSVで置き換えた月の印
-      const dot=document.createElementNS(NS,"circle");
-      dot.setAttribute("cx",cx); dot.setAttribute("cy",H-padB+8); dot.setAttribute("r",2.5);
-      dot.setAttribute("fill","#e3c477");
-      g.appendChild(dot);
     }
     taSvg.appendChild(g);
     TBARS.push({x:cx,g,m});
@@ -1138,7 +1098,6 @@ function saveSnapshot(dateStr){
   renderHistory();
   histLocalWrite=true;                             // 読み戻しより手元の読み込みを優先する
   sbSaveSnapshot({date:day,total,cost,rows:RAW});   // DB保存は待たない（描画をネットワークに引きずられないため）
-  setLocalBrokerDay(day,RAW);                      // 資産全体の合算にもすぐ反映する
 }
 
 let histRange=0;   // 表示期間（月数、0=全期間）
@@ -1309,8 +1268,6 @@ document.getElementById("histClear").addEventListener("click",()=>{
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     curDate="";
     buildDateSelector(loadHist());                   // 消した日付を選べないようにする
-    BT_DB=[]; BT_LOCAL.clear(); btCleared=true;      // 資産全体の合算からもCSVを外す
-    renderTotal();
     sbDeleteAll();
   }
 });
@@ -1359,7 +1316,6 @@ function delHistoryDay(day){
   showSeq++;                                       // 取得中の表示切り替えを無効化する
   if(curDate===day) curDate="";
   buildDateSelector(loadHist());                   // 消した日付を選べないようにする
-  setLocalBrokerDay(day,null);                     // 資産全体の合算からも外す
   sbDeleteDay(day);
   return true;
 }
@@ -1441,7 +1397,7 @@ buildDateSelector(loadHist());
 
 // Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
 // 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
-(async function hydrateFromDB(){
+const histHydrated=(async function hydrateFromDB(){
   if(!sbEnabled()) return;          // 未設定時は supabase.js 側で「DB未設定」表示済み
   const rows=await sbLoadHistory();
   if(histLocalWrite) return;        // 取得を待つ間にCSVを読み込んだ → そちらが新しいので上書きしない
@@ -1456,12 +1412,12 @@ buildDateSelector(loadHist());
 histNarrow.addEventListener("change",()=>renderTotal());
 renderTotal();
 
-// 月次資産と保有明細をSupabaseから読み戻す。localStorageの月次資産は同期キャッシュ扱い
+// 月次資産をSupabaseから読み戻す。localStorageの月次資産は同期キャッシュ扱い
 (async function hydrateTotalFromDB(){
   if(!sbEnabled()) return;
-  const [ma,hold]=await Promise.all([sbLoadMonthlyAssets(),sbLoadAllHoldings()]);
-  if(!ma||!hold) sbStatus("error");              // 後から終わった方の「成功」で失敗表示が消えないようにする
+  const ma=await sbLoadMonthlyAssets();
+  await histHydrated;                            // 推移の読み戻しが後に終わると、その「成功」で失敗表示が消えるため待つ
+  if(!ma) sbStatus("error");
   if(ma&&ma.length&&!maLocalWrite) saveMA(ma);   // DBが空・失敗なら手元のキャッシュを残す
-  if(hold&&!btCleared) BT_DB=summarizeHoldings(hold);
   renderTotal();
 })();

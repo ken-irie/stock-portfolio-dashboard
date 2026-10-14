@@ -1,5 +1,5 @@
-// 月次資産Excelの読み取りと、CSVとの合算。DOMにもネットワークにも触らない純粋関数だけを置く。
-// app.jsから使う入口は workbookToSheets / parseAssetSheets / summarizeHoldings / combineMonthly / ASSET_CATS。
+// 月次資産Excelの読み取りと、月ごとの集計。DOMにもネットワークにも触らない純粋関数だけを置く。
+// app.jsから使う入口は workbookToSheets / parseAssetSheets / combineMonthly / ASSET_CATS。
 (function(){
 
   const SHEET_RE=/^(\d{4})年度\s*資産\s*$/;
@@ -91,85 +91,35 @@
   const DEPOSIT_KINDS=new Set(["口座預金","口座","証券口座","銀行貯金"]);
   const CASH_KINDS=new Set(["現金","電子マネー"]);
 
-  // Excelの行を、CSVで置き換えるかどうかの区分に分ける
-  function classify(kind,item){
-    if(kind==="株式"){
-      if(item.includes("楽天")) return "rakuten";
-      if(item.includes("SBI")) return "sbi_sec";
-      return "pension";
-    }
-    if(BOND_KINDS.has(kind)) return item.includes("SBI")?"sbi_sec":"other";
-    if(DEPOSIT_KINDS.has(kind)) return item.includes("SBI")?"sbi_dep":"deposit";
+  // Excelの行を表示カテゴリに分ける
+  function catOf(kind,item){
+    if(kind==="株式") return (item.includes("楽天")||item.includes("SBI")) ? "securities" : "pension";
+    if(BOND_KINDS.has(kind)) return item.includes("SBI") ? "securities" : "other";
+    if(DEPOSIT_KINDS.has(kind)) return "deposit";
     if(kind==="仮想通貨") return "crypto";
     if(CASH_KINDS.has(kind)) return "cash";
     return "other";
   }
-  const CLASS_CAT={rakuten:"securities",sbi_sec:"securities",sbi_dep:"deposit",
-    pension:"pension",deposit:"deposit",crypto:"crypto",cash:"cash",other:"other"};
 
-  // 保有明細を日付・証券会社ごとに合計する。外貨預り金（code "現金"）は別にも数える
-  function summarizeHoldings(rows){
-    const m=new Map();
-    for(const r of rows||[]){
-      if(!r||!r.date||!r.broker) continue;   // 証券会社を記録する前の明細は、どのCSVか分からないので使わない
-      const v=Number(r.value);
-      if(!isFinite(v)) continue;
-      const key=r.date+"\t"+r.broker;
-      const e=m.get(key)||{date:r.date,broker:r.broker,total:0,usdCash:0};
-      e.total+=v;
-      if(r.code==="現金") e.usdCash+=v;
-      m.set(key,e);
-    }
-    return [...m.values()].sort((a,b)=>a.date.localeCompare(b.date));
-  }
-
-  function daysBefore(date,n){
-    const [y,m,d]=date.split("-").map(Number);
-    const t=new Date(Date.UTC(y,m-1,d-n));
-    return t.getUTCFullYear()+"-"+pad2(t.getUTCMonth()+1)+"-"+pad2(t.getUTCDate());
-  }
-
-  // Excelの記録日ごとに、その月の範囲で最新のCSVと組み合わせて資産全体を出す
-  function combineMonthly(excelRows,brokerTotals){
+  // Excelの記録日ごとに、カテゴリ別の金額と合計を出す（CSVは使わず、Excelの値をそのまま正とする）
+  function combineMonthly(excelRows){
     const byDate=new Map();
     for(const r of excelRows||[]){
-      if(!byDate.has(r.date)) byDate.set(r.date,[]);
-      byDate.get(r.date).push(r);
+      if(!byDate.has(r.date)){
+        const cats={};
+        ASSET_CATS.forEach(c=>cats[c.key]=0);
+        byDate.set(r.date,cats);
+      }
+      byDate.get(r.date)[catOf(r.kind,r.item)]+=r.amount;
     }
-    const dates=[...byDate.keys()].sort();
-    const bts=brokerTotals||[];
-    return dates.map((date,i)=>{
-      // 前の記録日より後〜この記録日まで（最初の月は31日前より後）。古いCSVでExcelの新しい値を上書きしないため
-      const lo=i>0?dates[i-1]:daysBefore(date,31);
-      let csvDate=null;
-      for(const b of bts) if(b.date>lo && b.date<=date && (!csvDate||b.date>csvDate)) csvDate=b.date;
-      const bk={};
-      if(csvDate) for(const b of bts) if(b.date===csvDate) bk[b.broker]=b;
-      const rk=bk["楽天"], sbi=bk["SBI"];
-      const cats={};
-      ASSET_CATS.forEach(c=>cats[c.key]=0);
-      let hasSbiDep=false;
-      for(const r of byDate.get(date)){
-        const cls=classify(r.kind,r.item);
-        if(cls==="rakuten"&&rk) continue;
-        if(cls==="sbi_sec"&&sbi) continue;
-        if(cls==="sbi_dep") hasSbiDep=true;
-        cats[CLASS_CAT[cls]]+=r.amount;
-      }
-      if(rk) cats.securities+=rk.total;
-      if(sbi){
-        cats.securities+=sbi.total;
-        // SBIの外貨預り金はCSVにも入っているので、Excelの預金から引いて二重計上を防ぐ（負になっても0にしない）
-        if(hasSbiDep) cats.deposit-=sbi.usdCash;
-      }
-      const total=ASSET_CATS.reduce((s,c)=>s+cats[c.key],0);
-      return {date,total,cats,csvDate:(rk||sbi)?csvDate:null};
+    return [...byDate.keys()].sort().map(date=>{
+      const cats=byDate.get(date);
+      return {date, total:ASSET_CATS.reduce((s,c)=>s+cats[c.key],0), cats};
     });
   }
 
   window.workbookToSheets=workbookToSheets;
   window.parseAssetSheets=parseAssetSheets;
-  window.summarizeHoldings=summarizeHoldings;
   window.combineMonthly=combineMonthly;
   window.ASSET_CATS=ASSET_CATS;
 
