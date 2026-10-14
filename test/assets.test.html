@@ -195,6 +195,52 @@ test("combineMonthly: Excelが空なら空配列", ()=>{
   eq(combineMonthly(null),[]);
 });
 
+// ---- 暫定の月（最後の記録日より後のCSVで、証券だけ差し替える） ----
+const H=(date,broker,code,value)=>({date,broker,code,value});
+
+test("provisionalMonth: 最後の記録日より後のCSVでSBIの株式・債券を差し替え、楽天と預金はExcelのまま", ()=>{
+  const r=provisionalMonth(EX,[
+    H("2026-10-12","SBI","7203",2400),
+    H("2026-10-12","SBI","債券",160),
+  ]);
+  eq(r,{date:"2026-10-12",baseDate:"2026-09-29",total:5035,
+    cats:{securities:3560,pension:400,deposit:1000,crypto:50,cash:25,other:0},provisional:true});
+});
+
+test("provisionalMonth: 楽天とSBIの両方があれば両方差し替える", ()=>{
+  const r=provisionalMonth(EX,[H("2026-10-12","楽天","AAPL",1200),H("2026-10-12","SBI","7203",2500)]);
+  eq(r.cats.securities,3700);
+});
+
+test("provisionalMonth: CSVの米ドル現金（code 現金）は数えない（Excelの預金に入っているため）", ()=>{
+  const r=provisionalMonth(EX,[H("2026-10-12","SBI","7203",2400),H("2026-10-12","SBI","現金",647)]);
+  eq(r.cats.securities,1000+2400);
+  eq(r.cats.deposit,1000);
+});
+
+test("provisionalMonth: CSVが最後の記録日以前ならnull", ()=>{
+  eq(provisionalMonth(EX,[H("2026-09-29","SBI","7203",2400)]),null);
+  eq(provisionalMonth(EX,[H("2026-09-01","SBI","7203",2400)]),null);
+});
+
+test("provisionalMonth: 楽天・SBIの行がない（証券会社が空・米ドルだけ）ならnull", ()=>{
+  eq(provisionalMonth(EX,[H("2026-10-12","","7203",2400)]),null);
+  eq(provisionalMonth(EX,[H("2026-10-12","SBI","現金",647)]),null);
+  eq(provisionalMonth(EX,[]),null);
+  eq(provisionalMonth([],[H("2026-10-12","SBI","7203",2400)]),null);
+});
+
+test("provisionalMonth: SBIの株式が複数行あっても差し替えは1回だけ", ()=>{
+  const base=[
+    {kind:"株式",item:"SBI証券(日本株・NISA)",amount:700},
+    {kind:"株式",item:"SBI証券(米国株)",amount:500},
+    {kind:"口座預金",item:"楽天銀行",amount:100},
+  ];
+  const r=provisionalMonth(mk("2024-03-27",base),[H("2024-04-05","SBI","7203",1300)]);
+  eq(r.cats.securities,1300);
+  eq(r.total,1400);
+});
+
 test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・その他", ()=>{
   eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","other"]);
 });

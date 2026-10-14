@@ -118,6 +118,40 @@
     });
   }
 
+  // 証券の行がどの証券会社のものか（CSVで差し替える対象）。証券以外はnull
+  function brokerOf(kind,item){
+    if(catOf(kind,item)!=="securities") return null;
+    return item.includes("楽天") ? "楽天" : "SBI";
+  }
+
+  // 最後の記録日より後のCSV（holdings）で、Excelの最新月の楽天・SBIの証券だけを差し替えた「暫定」の月を出す。
+  // 米ドル現金（code "現金"）はExcelの預金に入っているので数えない。差し替えられなければnull
+  function provisionalMonth(excelRows,holdings){
+    const months=combineMonthly(excelRows);
+    if(!months.length) return null;
+    const baseDate=months[months.length-1].date;
+    const sums={};
+    let date=null;
+    for(const h of holdings||[]){
+      if(!h||!h.date||h.date<=baseDate||(h.broker!=="楽天"&&h.broker!=="SBI")||h.code==="現金") continue;
+      const v=Number(h.value);
+      if(!isFinite(v)) continue;
+      sums[h.broker]=(sums[h.broker]||0)+v;
+      if(!date||h.date>date) date=h.date;
+    }
+    if(!date) return null;
+    const cats={};
+    ASSET_CATS.forEach(c=>cats[c.key]=0);
+    for(const r of excelRows){
+      if(r.date!==baseDate) continue;
+      if(sums[brokerOf(r.kind,r.item)]!==undefined) continue;   // CSVのある証券会社はCSVの値を使う
+      cats[catOf(r.kind,r.item)]+=r.amount;
+    }
+    for(const b in sums) cats.securities+=sums[b];
+    return {date, baseDate, total:ASSET_CATS.reduce((s,c)=>s+cats[c.key],0), cats, provisional:true};
+  }
+
+  window.provisionalMonth=provisionalMonth;
   window.workbookToSheets=workbookToSheets;
   window.parseAssetSheets=parseAssetSheets;
   window.combineMonthly=combineMonthly;
