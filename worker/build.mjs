@@ -6,6 +6,7 @@ const FILES = {
   "portfolio_app.html": "index.html",
   "style.css": "style.css",
   "sectors.js": "sectors.js",
+  "assets.js": "assets.js",
   "supabase.js": "supabase.js",
   "app.js": "app.js",
   "worker/login.html": "login.html",

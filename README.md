@@ -33,6 +33,7 @@ SBI証券・楽天証券の保有証券CSVを読み込んで、資産ポート�
 - **フィルター・並び替え** — 日本株 / 米国株 / 投信の絞り込み、金額 / 損益 / 名前での並び替え
 - **[その他]集約スライダー** — 構成比の小さい銘柄をまとめて見やすく
 - **資産推移グラフ** — CSVを読み込むたびにブラウザ(localStorage)へ自動記録し、資産残高と元本の推移を折れ線で表示。期間切替・ホバーで日別詳細
+- **資産全体（月次資産Excel）** — 「資産Excel」から月次資産のExcel（`〇〇〇〇年度　資産` シート）を読み込むと、預金・仮想通貨・企業DCなども含めた資産全体を月ごとの積み上げ棒グラフで表示する。楽天・SBIの証券はその月のCSVがあればCSVの値を使い、なければExcelの値を使う
 - **Supabase連携（任意）** — 資産推移と保有明細をDBにも保存し、起動時に推移を読み戻す。設定しなければ従来通りブラウザ内で完結（[詳細](#supabase連携任意)）
 
 ## 対応CSV形式
@@ -79,11 +80,21 @@ create table holdings (
 
 create index holdings_date_idx on holdings (snapshot_date);
 
-alter table snapshots enable row level security;
-alter table holdings  enable row level security;
+create table monthly_assets (
+  record_date date    not null,
+  kind        text    not null,
+  item        text    not null,
+  amount      numeric not null,
+  primary key (record_date, kind, item)
+);
 
-create policy "anon all" on snapshots for all to anon using (true) with check (true);
-create policy "anon all" on holdings  for all to anon using (true) with check (true);
+alter table snapshots      enable row level security;
+alter table holdings       enable row level security;
+alter table monthly_assets enable row level security;
+
+create policy "anon all" on snapshots      for all to anon using (true) with check (true);
+create policy "anon all" on holdings       for all to anon using (true) with check (true);
+create policy "anon all" on monthly_assets for all to anon using (true) with check (true);
 ```
 
 3. Project Settings → API から Project URL と anon public key をコピーする

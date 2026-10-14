@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261012c">
+<link rel="stylesheet" href="style.css?v=20261014a">
 </head>
 <body>
 
@@ -21,6 +21,11 @@
       CSV読込
       <input type="file" id="file" accept=".csv" multiple hidden>
     </label>
+    <label class="tbtn" title="月次資産のExcel（〇〇〇〇年度　資産 シート）を読み込み">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      資産Excel
+      <input type="file" id="xlsxFile" accept=".xlsx" hidden>
+    </label>
     <button class="tbtn" id="pasteBtn" title="SBI外国株の画面コピーを貼り付けて取り込む">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="4" width="12" height="16" rx="2"/><path d="M16 4V3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v1M4 8v11a2 2 0 0 0 2 2h6"/></svg>
       外国株貼付
@@ -29,6 +34,33 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
       リセット
     </button>
+  </div>
+
+  <!-- total assets -->
+  <div class="total-wrap">
+    <div class="card">
+      <div class="card-title">
+        <span>資産全体 <small id="taInfo"></small></span>
+      </div>
+      <div class="hist-stat">
+        <span class="hd" id="taDate">–</span>
+        <span class="hl">総資産</span><b id="taTotal">–</b>
+        <span class="hl">前月比</span><b id="taDiff">–</b><b id="taDiffP"></b>
+      </div>
+      <div class="hist-ctrl">
+        <div class="hseg" id="taSeg">
+          <button data-r="12" class="on">1年</button>
+          <button data-r="36">3年</button>
+          <button data-r="0">全期間</button>
+        </div>
+        <span class="hrange" id="taRange"></span>
+      </div>
+      <div class="hist-body">
+        <svg id="taSvg" viewBox="0 0 1040 280"></svg>
+      </div>
+      <div id="taDetail" class="chart-detail" hidden></div>
+      <div class="ta-mix" id="taMix"></div>
+    </div>
   </div>
 
   <!-- section header -->
@@ -111,7 +143,7 @@
         <span class="hl">評価損益</span><b id="hPL">–</b><b id="hPLp"></b>
       </div>
       <div class="hist-ctrl">
-        <div class="hseg">
+        <div class="hseg" id="histSeg">
           <button data-r="3">直近3ヶ月</button>
           <button data-r="6">直近半年</button>
           <button data-r="12">直近1年</button>
@@ -125,9 +157,12 @@
     </div>
   </div>
 
-<script src="sectors.js?v=20261012c"></script>
+<!-- Excel読み込み用。押したときにだけ使うので、CDNが遅くても画面の表示を止めないよう defer にする -->
+<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="sectors.js?v=20261014a"></script>
+<script src="assets.js?v=20261014a"></script>
 <script src="supabase-config.js"></script>
-<script src="supabase.js?v=20261012c"></script>
-<script src="app.js?v=20261012c"></script>
+<script src="supabase.js?v=20261014a"></script>
+<script src="app.js?v=20261014a"></script>
 </body>
 </html>

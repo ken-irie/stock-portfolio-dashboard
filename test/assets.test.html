@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>assets.js テスト</title>
+<style>
+  body{background:#12151c;color:#e8ebf2;font-family:monospace;padding:24px;line-height:1.7;}
+  .ok{color:#6fcf97;} .ng{color:#ff8a8a;}
+  h1{font-size:16px;} #sum{font-size:15px;font-weight:700;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<h1>assets.js テスト</h1>
+<div id="sum">実行中…</div>
+<pre id="out"></pre>
+
+<!-- ブラウザが古い assets.js を握り続けないよう、毎回別URLとして読ませる -->
+<script>document.write('<scr'+'ipt src="../assets.js?cb='+Date.now()+'"><\/scr'+'ipt>');</script>
+<script>
+// ---- 最小のテストハーネス ----
+const TESTS=[];
+function test(name, fn){ TESTS.push({name, fn}); }
+function assert(cond, msg){ if(!cond) throw new Error(msg||"assertion failed"); }
+function eq(actual, expected, msg){
+  const a=JSON.stringify(actual), b=JSON.stringify(expected);
+  if(a!==b) throw new Error((msg?msg+": ":"")+"expected "+b+" but got "+a);
+}
+
+// === tests ===
+
+// 2026年度型：A列が空で、B列が種類・C列が資産
+const S2026={name:"2026年度　資産", rows:[
+  [null,null,null,null,null,null],
+  [null,null,"メモ",null,null,null],
+  [null,null,null,"2026-03-29","2026-04-28",null],
+  [null,"種類","資産","３月","４月","合計（実際）"],
+  [null,"株式","楽天証券",100,110,999],
+  [null,null,"SBI証券",200,210,null],
+  [null,null,"持株",null,50,null],
+  [null,"口座預金","SBI証券",300,0,null],
+  [null,"電子マネー","Amazon ",7,"",null],
+  [null,"合計","合計",607,370,null],
+  [null,null,"今月-先月",0,-237,null],
+]};
+
+test("parseAssetSheets: 種類の引き継ぎ・空欄と文字列の除外・0は残す・日付のない列は読まない", ()=>{
+  const r=parseAssetSheets([S2026]);
+  eq(r.rows,[
+    {date:"2026-03-29",kind:"株式",item:"楽天証券",amount:100},
+    {date:"2026-03-29",kind:"株式",item:"SBI証券",amount:200},
+    {date:"2026-03-29",kind:"口座預金",item:"SBI証券",amount:300},
+    {date:"2026-03-29",kind:"電子マネー",item:"Amazon",amount:7},
+    {date:"2026-04-28",kind:"株式",item:"楽天証券",amount:110},
+    {date:"2026-04-28",kind:"株式",item:"SBI証券",amount:210},
+    {date:"2026-04-28",kind:"株式",item:"持株",amount:50},
+    {date:"2026-04-28",kind:"口座預金",item:"SBI証券",amount:0},
+  ]);
+  eq(r.years,1); eq(r.months,2);
+});
+
+test("parseAssetSheets: 列が1つずれた2022年度型と、合計行の下の表を読まない", ()=>{
+  const s={name:"2022年度　資産", rows:[
+    [null,null,"目標",null,null],
+    ["実際",null,null,"2022-04-02","2022-05-01"],
+    [null,"種類","資産","現在","５月"],
+    [null,"株式","株式（楽天）",1000,1100],
+    [null,"証券口座","SBI証券口座",500,500],
+    [null,"合計","合計",1500,1600],
+    ["理想",null,"資産","現在","５月"],
+    [null,null,"金融資産",9999,9999],
+  ]};
+  eq(parseAssetSheets([s]).rows,[
+    {date:"2022-04-02",kind:"株式",item:"株式（楽天）",amount:1000},
+    {date:"2022-04-02",kind:"証券口座",item:"SBI証券口座",amount:500},
+    {date:"2022-05-01",kind:"株式",item:"株式（楽天）",amount:1100},
+    {date:"2022-05-01",kind:"証券口座",item:"SBI証券口座",amount:500},
+  ]);
+});
+
+test("parseAssetSheets: 年度シート以外は読まず、末尾に空白のあるシート名は読む", ()=>{
+  const body=[[null,null,"2023-04-01"],["種類","資産","現在"],["現金","現ナマ",10],["合計","合計",10]];
+  const r=parseAssetSheets([
+    {name:"Sheet1", rows:body},
+    {name:"収支", rows:body},
+    {name:"2023年度　資産 ", rows:body},
+  ]);
+  eq(r.rows,[{date:"2023-04-01",kind:"現金",item:"現ナマ",amount:10}]);
+  eq(r.years,1);
+});
+
+test("parseAssetSheets: 重なる記録日は新しい年度のシートを使う（シートの並び順によらない）", ()=>{
+  const s2025={name:"2025年度　資産", rows:[
+    [null,null,"2025-03-28","2026-03-29"],
+    ["種類","資産","３月","３月"],
+    ["現金","現ナマ",1,2],
+    ["合計","合計",1,2],
+  ]};
+  const s2026={name:"2026年度　資産", rows:[
+    [null,null,"2026-03-29","2026-04-28"],
+    ["種類","資産","３月","４月"],
+    ["現金","現ナマ",3,4],
+    ["仮想通貨","日本円",5,5],
+    ["合計","合計",8,9],
+  ]};
+  const r=parseAssetSheets([s2025,s2026]);
+  eq(r.rows,[
+    {date:"2025-03-28",kind:"現金",item:"現ナマ",amount:1},
+    {date:"2026-03-29",kind:"現金",item:"現ナマ",amount:3},
+    {date:"2026-03-29",kind:"仮想通貨",item:"日本円",amount:5},
+    {date:"2026-04-28",kind:"現金",item:"現ナマ",amount:4},
+    {date:"2026-04-28",kind:"仮想通貨",item:"日本円",amount:5},
+  ]);
+  eq(r.years,2); eq(r.months,3);
+});
+
+test("parseAssetSheets: 同じ種類・項目が2行あれば合算する", ()=>{
+  const s={name:"2024年度　資産", rows:[
+    [null,null,"2024-04-28"],
+    ["種類","資産","４月"],
+    ["現金","財布",10],
+    [null,"財布",5],
+    ["合計","合計",15],
+  ]};
+  eq(parseAssetSheets([s]).rows,[{date:"2024-04-28",kind:"現金",item:"財布",amount:15}]);
+});
+
+test("parseAssetSheets: 対象シートがない・見出しがないときは空", ()=>{
+  eq(parseAssetSheets([{name:"Sheet1",rows:[]}]),{rows:[],years:0,months:0});
+  eq(parseAssetSheets([{name:"2026年度　資産",rows:[["a","b"],[1,2]]}]),{rows:[],years:0,months:0});
+  eq(parseAssetSheets([]),{rows:[],years:0,months:0});
+});
+
+test("workbookToSheets: Dateを日付文字列にし、前日23:59台にずれた値も当日に丸める", ()=>{
+  const old=window.XLSX;
+  let opt=null;
+  window.XLSX={utils:{sheet_to_json:(ws,o)=>{ opt=o; return ws.data; }}};
+  try{
+    const wb={SheetNames:["A"], Sheets:{A:{data:[
+      [new Date(2026,8,28,23,59,39), new Date(2026,2,29), 5, "x", null]
+    ]}}};
+    eq(workbookToSheets(wb),[{name:"A",rows:[["2026-09-29","2026-03-29",5,"x",null]]}]);
+    eq(opt.header,1); eq(opt.raw,true); eq(opt.defval,null); eq(opt.blankrows,true);
+  }finally{ window.XLSX=old; }
+});
+
+// ---- 合算 ----
+// 1か月分のExcel行（CSVを使わなければ 証券3150 / 企業DC・持株400 / 預金1000 / 仮想通貨50 / 現金25 = 4625）
+const BASE=[
+  {kind:"株式",item:"楽天証券",amount:1000},
+  {kind:"株式",item:"SBI証券",amount:2000},
+  {kind:"株式",item:"企業DC",amount:300},
+  {kind:"株式",item:"持株",amount:100},
+  {kind:"債権",item:"SBI証券",amount:150},
+  {kind:"仮想通貨",item:"BTC",amount:50},
+  {kind:"口座預金",item:"SBI証券",amount:400},
+  {kind:"口座預金",item:"楽天銀行",amount:600},
+  {kind:"現金",item:"現ナマ",amount:20},
+  {kind:"電子マネー",item:"PayPay",amount:5},
+];
+const mk=(date,base)=>(base||BASE).map(r=>Object.assign({date},r));
+const EX=[...mk("2026-08-26"),...mk("2026-09-29")];
+const EXCEL_ONLY={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,other:0};
+
+test("combineMonthly: CSVがなければExcelの値をカテゴリ別にまとめる", ()=>{
+  eq(combineMonthly(EX,[]),[
+    {date:"2026-08-26",total:4625,cats:EXCEL_ONLY,csvDate:null},
+    {date:"2026-09-29",total:4625,cats:EXCEL_ONLY,csvDate:null},
+  ]);
+});
+
+test("combineMonthly: SBIのCSVがあればSBIの株式・債権を置き換え、SBI預金から外貨預り金を引く", ()=>{
+  const r=combineMonthly(EX,[{date:"2026-09-15",broker:"SBI",total:2600,usdCash:120}]);
+  eq(r[0].csvDate,null,"8月は範囲外");
+  eq(r[1],{date:"2026-09-29",total:4955,
+    cats:{securities:3600,pension:400,deposit:880,crypto:50,cash:25,other:0},csvDate:"2026-09-15"});
+});
+
+test("combineMonthly: 楽天のCSVだけなら楽天の株式だけを置き換え、預金は引かない", ()=>{
+  const r=combineMonthly(EX,[{date:"2026-09-15",broker:"楽天",total:1500,usdCash:30}]);
+  eq(r[1].cats,{securities:3650,pension:400,deposit:1000,crypto:50,cash:25,other:0});
+  eq(r[1].total,5125);
+});
+
+test("combineMonthly: 楽天とSBIが同じ日にあれば両方置き換える", ()=>{
+  const r=combineMonthly(EX,[
+    {date:"2026-09-15",broker:"楽天",total:1500,usdCash:0},
+    {date:"2026-09-15",broker:"SBI",total:2600,usdCash:120},
+  ]);
+  eq(r[1].cats.securities,4100);
+  eq(r[1].cats.deposit,880);
+});
+
+test("combineMonthly: 前の記録日以前のCSVは使わない（最初の月は31日前より後だけ）", ()=>{
+  const r=combineMonthly(EX,[
+    {date:"2026-07-01",broker:"SBI",total:9999,usdCash:0},   // 8/26の31日前(7/26)より前 → 使わない
+    {date:"2026-08-20",broker:"SBI",total:2600,usdCash:0},   // 8月分に使う。9月分には使わない
+  ]);
+  eq(r[0].csvDate,"2026-08-20");
+  eq(r[0].cats.securities,3600);
+  eq(r[1].csvDate,null);
+  eq(r[1].cats.securities,3150);
+});
+
+test("combineMonthly: 記録日当日のCSVは使い、翌日のCSVは使わない", ()=>{
+  eq(combineMonthly(EX,[{date:"2026-09-29",broker:"SBI",total:2600,usdCash:0}])[1].csvDate,"2026-09-29");
+  eq(combineMonthly(EX,[{date:"2026-09-30",broker:"SBI",total:2600,usdCash:0}])[1].csvDate,null);
+});
+
+test("combineMonthly: 範囲内に複数のCSVがあれば最も新しい日を使う", ()=>{
+  const r=combineMonthly(EX,[
+    {date:"2026-09-10",broker:"SBI",total:2500,usdCash:0},
+    {date:"2026-09-20",broker:"SBI",total:2700,usdCash:0},
+  ]);
+  eq(r[1].csvDate,"2026-09-20");
+  eq(r[1].cats.securities,3700);
+});
+
+test("combineMonthly: ExcelにSBI預金の行がなければ外貨預り金を引かない", ()=>{
+  const base=BASE.filter(r=>!(r.kind==="口座預金"&&r.item==="SBI証券"));
+  const r=combineMonthly(mk("2026-09-29",base),[{date:"2026-09-15",broker:"SBI",total:2600,usdCash:120}]);
+  eq(r[0].cats.deposit,600);
+});
+
+test("combineMonthly: SBIの株式が複数行あっても置き換えは1回だけ", ()=>{
+  const base=[
+    {kind:"株式",item:"SBI証券(日本株・NISA)",amount:700},
+    {kind:"株式",item:"SBI証券(米国株)",amount:500},
+    {kind:"株式",item:"企業DC",amount:300},
+  ];
+  const r=combineMonthly(mk("2024-03-27",base),[{date:"2024-03-20",broker:"SBI",total:1300,usdCash:0}]);
+  eq(r[0].cats.securities,1300);
+  eq(r[0].cats.pension,300);
+});
+
+test("combineMonthly: 過去年度の種類名と、知らない種類の分類", ()=>{
+  const base=[
+    {kind:"株式",item:"株式（楽天）",amount:1},
+    {kind:"株式",item:"株式（SBI）",amount:2},
+    {kind:"証券口座",item:"楽天証券口座",amount:4},
+    {kind:"銀行貯金",item:"SMBC",amount:8},
+    {kind:"口座",item:"SBI証券",amount:16},
+    {kind:"電子マネー",item:"楽天cash",amount:32},
+    {kind:"不動産",item:"土地",amount:64},
+  ];
+  eq(combineMonthly(mk("2022-04-02",base),[])[0].cats,
+    {securities:3,pension:0,deposit:28,crypto:0,cash:32,other:64});
+});
+
+test("combineMonthly: 知らない証券会社しかない日はCSVなし扱い", ()=>{
+  eq(combineMonthly(EX,[{date:"2026-09-15",broker:"その他",total:5,usdCash:0}])[1].csvDate,null);
+});
+
+test("combineMonthly: Excelが空なら空配列", ()=>{
+  eq(combineMonthly([],[{date:"2026-09-15",broker:"SBI",total:5,usdCash:0}]),[]);
+});
+
+test("summarizeHoldings: 日付・証券会社ごとに合計し、外貨預り金を分けて数える", ()=>{
+  eq(summarizeHoldings([
+    {date:"2026-09-15",broker:"SBI",code:"7203",value:100},
+    {date:"2026-09-15",broker:"SBI",code:"現金",value:30},
+    {date:"2026-09-15",broker:"楽天",code:"投信",value:50},
+    {date:"2026-09-01",broker:"SBI",code:"AAPL",value:70},
+  ]),[
+    {date:"2026-09-01",broker:"SBI",total:70,usdCash:0},
+    {date:"2026-09-15",broker:"SBI",total:130,usdCash:30},
+    {date:"2026-09-15",broker:"楽天",total:50,usdCash:0},
+  ]);
+});
+
+test("summarizeHoldings: 証券会社が記録されていない行と、数値でない金額は無視する", ()=>{
+  eq(summarizeHoldings([
+    {date:"2026-07-01",broker:"",code:"7203",value:100},
+    {date:"2026-07-01",broker:null,code:"7203",value:100},
+    {date:"2026-07-01",broker:"SBI",code:"7203",value:"abc"},
+    {date:"2026-07-01",broker:"SBI",code:"7203",value:"40"},
+  ]),[{date:"2026-07-01",broker:"SBI",total:40,usdCash:0}]);
+  eq(summarizeHoldings(null),[]);
+});
+
+test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・その他", ()=>{
+  eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","other"]);
+});
+
+// === /tests ===
+
+(async function run(){
+  const out=document.getElementById("out");
+  let pass=0, fail=0; const lines=[];
+  for(const t of TESTS){
+    try{ await t.fn(); pass++; lines.push('<span class="ok">PASS</span> '+t.name); }
+    catch(e){ fail++; lines.push('<span class="ng">FAIL</span> '+t.name+'\n       '+e.message); }
+  }
+  out.innerHTML=lines.join("\n");
+  document.getElementById("sum").innerHTML =
+    fail===0 ? '<span class="ok">ALL PASS ('+pass+')</span>'
+             : '<span class="ng">'+fail+' FAILED</span> / '+pass+' passed';
+  document.title = (fail===0?"ALL PASS":"FAILED")+" - assets.js テスト";
+})();
+</script>
+</body>
+</html>

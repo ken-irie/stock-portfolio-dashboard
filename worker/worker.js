@@ -4,7 +4,7 @@
 // 必要なシークレット: APP_PASSWORD / SUPABASE_URL / SUPABASE_KEY（任意で SESSION_SECRET）
 
 const SESSION_DAYS = 30;
-const TABLE_PATH = /^(snapshots|holdings)$/;   // 中継してよいテーブル
+const TABLE_PATH = /^(snapshots|holdings|monthly_assets)$/;   // 中継してよいテーブル
 const DB_METHODS = new Set(["GET", "POST", "DELETE"]);
 
 const enc = new TextEncoder();
