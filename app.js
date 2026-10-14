@@ -148,11 +148,7 @@ function parseRakuten(rows){
     if(r[0]==="種別"){ inTbl=true; continue; }
     if(!inTbl) continue;
     if(!r[0]||r[0].startsWith("■")) { if(r[0]&&r[0].startsWith("■")) break; continue; }
-    if(r[0]==="外貨預り金"){                      // 外貨預り金（現金）も資産に含める
-      const cv=num(r[14]);
-      if(cv>0) out.push({ name:((r[2]||"米ドル").trim())+"（現金）", code:"現金", value:cv, cost:cv, cat:"cash", acct:"外貨預り金" });
-      continue;
-    }
+    if(r[0]==="外貨預り金") continue;             // 外貨預り金（現金）は月次資産Excelの預金側で管理するので取り込まない
     const cat=catMap[r[0]];
     if(!cat) continue;
     const value=num(r[14]), pl=num(r[16]);
@@ -196,7 +192,7 @@ function parseSBI(rows){
   return out;
 }
 
-// SBI外国株形式。株式＋預り金（外貨現金）に対応。外貨債券セクションはスキップ。
+// SBI外国株形式。株式・外貨債券を取り込む。預り金（外貨現金）は月次資産Excelの預金側で管理するので取り込まない。
 // 旧形式（株式一覧のみ）は先頭が株式ヘッダーなので stock で開始してそのまま動く。
 function parseSBIForeign(rows){
   const out=[];
@@ -214,9 +210,6 @@ function parseSBIForeign(rows){
       if(r.length<13) continue;
       const value=num(r[12]), cost=num(r[10]);   // 評価額_円換算 / 取得金額_円換算
       if(value>0) out.push({ name:first, code:(r[1]||"").trim(), value, cost, cat:"us", acct:"外国株式", qty:num(r[5]) });
-    }else if(mode==="cash"){
-      const value=num(r[2]);   // 通貨,保有数量,円換算評価額
-      if(value>0) out.push({ name:first+"（現金）", code:"現金", value, cost:value, cat:"cash", acct:"外貨預り金" });
     }else if(mode==="bond"){
       // 銘柄名,保有額面_USD,取得単価,取得為替,外貨建評価額_USD,円換算評価額
       const value=num(r[5]);
@@ -230,7 +223,7 @@ function parseSBIForeign(rows){
 }
 
 // SBI外国株「保有証券一覧」画面をコピーしたテキストを取り込む（GPT変換を不要にする）
-// 株式・外貨建債券・預り金の3セクションに対応。
+// 株式・外貨建債券を取り込む。預り金（外貨現金）は月次資産Excelの預金側で管理するので読み飛ばす。
 function parseSBIForeignPaste(text){
   // 不可視文字・特殊空白を除去/正規化（コードポイントで判定。貼り付け失敗の主因）
   text=String(text).replace(/[\s\S]/g,ch=>{
@@ -298,19 +291,6 @@ function parseSBIForeignPaste(text){
       continue;
     }
 
-    // 預り金: 通貨名の行を起点に、円換算評価額を拾う
-    if(mode==="cash"){
-      if(HEADER.test(ln) || usdOf(ln)!==null || yenOf(ln)!==null || plainNum(ln)!==null) continue;
-      const cur=nameOf(ln); let valYen=null, j=i+1;
-      for(; j<lines.length; j++){
-        const l=lines[j];
-        const y=yenOf(l); if(y!==null){ valYen=y; break; }   // 円換算評価額を拾って終了
-        if(MKT.test(l)) break;
-      }
-      if(valYen>0) out.push({ name:cur+"（現金）", code:"現金", value:valYen, cost:valYen, cat:"cash", acct:"外貨預り金" });
-      i=j;
-      continue;
-    }
   }
   out.forEach(d=>d.broker="SBI");
   return out;
