@@ -74,7 +74,7 @@ function showTip(e,d,total){
   moveTip(e);
 }
 function hideTip(){ tipEl.style.display="none"; }
-// 証券の推移グラフ用カード（日付・評価額・評価損益）
+// 証券の評価額推移グラフ用カード（日付・評価額・評価損益）
 function histTipHTML(h){
   const pl=h.total-h.cost, pct=h.cost?pl/h.cost*100:0, sg=pl>=0?"+":"";
   return `<div class="tip-h"><b>${h.date.replace(/-/g,"/")}</b></div>`+
@@ -1200,7 +1200,7 @@ function renderHistory(){
     svgText({x:W/2,y:H/2,fill:"#8a909c","font-size":14,"font-weight":600,
       "font-family":"Zen Kaku Gothic New","text-anchor":"middle",
       t: all.length ? "この期間の記録はありません"
-                    : "CSVを読み込むと自動で記録され、証券の推移がここに表示されます"},histSvg);
+                    : "CSVを読み込むと自動で記録され、証券の評価額推移がここに表示されます"},histSvg);
     return;
   }
   const last=hist[hist.length-1];
@@ -1297,7 +1297,7 @@ histNarrow.addEventListener("change",()=>renderHistory());
 // 履歴クリア
 document.getElementById("histClear").addEventListener("click",()=>{
   if(!loadHist().length) return;
-  if(confirm("証券の推移の記録をすべて削除しますか？（保存済みの記録も削除されます）")){
+  if(confirm("証券の評価額推移の記録をすべて削除しますか？（保存済みの記録も削除されます）")){
     showSeq++;                                       // 取得中の表示切り替えを無効化する
     localStorage.removeItem(HIST_KEY);
     renderHistory();
@@ -1364,7 +1364,7 @@ function delHistoryDay(day){
   if(!m) return;
   const day=m[1];
   if(loadHist().some(x=>x.date===day)){
-    if(confirm(day+" の証券の推移の記録を削除しますか？")){
+    if(confirm(day+" の証券の評価額推移の記録を削除しますか？")){
       delHistoryDay(day);
       alert(day+" の記録を削除しました。");
     }
@@ -1398,7 +1398,7 @@ function buildDateSelector(hist){
 // その日の表示を画面に反映する
 function applyDateView(date,rows,h){
   listEmptyMsg = rows.length ? LIST_EMPTY_DEFAULT
-    : "この日の保有明細は記録されていません。金額は下の証券の推移で確認できます";
+    : "この日の保有明細は記録されていません。金額は下の証券の評価額推移で確認できます";
   loadedNames=[]; LOADED.clear();   // CSV由来の状態は持ち越さない
   setData(rows);                    // RAW もここで入れ替わる
   curDate=date;
