@@ -143,8 +143,8 @@ test("workbookToSheets: Dateを日付文字列にし、前日23:59台にずれ�
   }finally{ window.XLSX=old; }
 });
 
-// ---- 合算 ----
-// 1か月分のExcel行（CSVを使わなければ 証券3150 / 企業DC・持株400 / 預金1000 / 仮想通貨50 / 現金25 = 4625）
+// ---- 月ごとの集計（Excelだけで計算する） ----
+// 1か月分のExcel行（証券3150 / 企業DC・持株400 / 預金1000 / 仮想通貨50 / 現金25 = 4625）
 const BASE=[
   {kind:"株式",item:"楽天証券",amount:1000},
   {kind:"株式",item:"SBI証券",amount:2000},
@@ -158,123 +158,41 @@ const BASE=[
   {kind:"電子マネー",item:"PayPay",amount:5},
 ];
 const mk=(date,base)=>(base||BASE).map(r=>Object.assign({date},r));
-const EX=[...mk("2026-08-26"),...mk("2026-09-29")];
-const EXCEL_ONLY={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,other:0};
+const EX=[...mk("2026-09-29"),...mk("2026-08-26")];
+const CATS={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,other:0};
 
-test("combineMonthly: CSVがなければExcelの値をカテゴリ別にまとめる", ()=>{
-  eq(combineMonthly(EX,[]),[
-    {date:"2026-08-26",total:4625,cats:EXCEL_ONLY,csvDate:null},
-    {date:"2026-09-29",total:4625,cats:EXCEL_ONLY,csvDate:null},
+test("combineMonthly: Excelの値を記録日ごと・カテゴリ別にまとめ、日付順に並べる", ()=>{
+  eq(combineMonthly(EX),[
+    {date:"2026-08-26",total:4625,cats:CATS},
+    {date:"2026-09-29",total:4625,cats:CATS},
   ]);
 });
 
-test("combineMonthly: SBIのCSVがあればSBIの株式・債権を置き換え、SBI預金から外貨預り金を引く", ()=>{
-  const r=combineMonthly(EX,[{date:"2026-09-15",broker:"SBI",total:2600,usdCash:120}]);
-  eq(r[0].csvDate,null,"8月は範囲外");
-  eq(r[1],{date:"2026-09-29",total:4955,
-    cats:{securities:3600,pension:400,deposit:880,crypto:50,cash:25,other:0},csvDate:"2026-09-15"});
-});
-
-test("combineMonthly: 楽天のCSVだけなら楽天の株式だけを置き換え、預金は引かない", ()=>{
-  const r=combineMonthly(EX,[{date:"2026-09-15",broker:"楽天",total:1500,usdCash:30}]);
-  eq(r[1].cats,{securities:3650,pension:400,deposit:1000,crypto:50,cash:25,other:0});
-  eq(r[1].total,5125);
-});
-
-test("combineMonthly: 楽天とSBIが同じ日にあれば両方置き換える", ()=>{
-  const r=combineMonthly(EX,[
-    {date:"2026-09-15",broker:"楽天",total:1500,usdCash:0},
-    {date:"2026-09-15",broker:"SBI",total:2600,usdCash:120},
-  ]);
-  eq(r[1].cats.securities,4100);
-  eq(r[1].cats.deposit,880);
-});
-
-test("combineMonthly: 前の記録日以前のCSVは使わない（最初の月は31日前より後だけ）", ()=>{
-  const r=combineMonthly(EX,[
-    {date:"2026-07-01",broker:"SBI",total:9999,usdCash:0},   // 8/26の31日前(7/26)より前 → 使わない
-    {date:"2026-08-20",broker:"SBI",total:2600,usdCash:0},   // 8月分に使う。9月分には使わない
-  ]);
-  eq(r[0].csvDate,"2026-08-20");
-  eq(r[0].cats.securities,3600);
-  eq(r[1].csvDate,null);
-  eq(r[1].cats.securities,3150);
-});
-
-test("combineMonthly: 記録日当日のCSVは使い、翌日のCSVは使わない", ()=>{
-  eq(combineMonthly(EX,[{date:"2026-09-29",broker:"SBI",total:2600,usdCash:0}])[1].csvDate,"2026-09-29");
-  eq(combineMonthly(EX,[{date:"2026-09-30",broker:"SBI",total:2600,usdCash:0}])[1].csvDate,null);
-});
-
-test("combineMonthly: 範囲内に複数のCSVがあれば最も新しい日を使う", ()=>{
-  const r=combineMonthly(EX,[
-    {date:"2026-09-10",broker:"SBI",total:2500,usdCash:0},
-    {date:"2026-09-20",broker:"SBI",total:2700,usdCash:0},
-  ]);
-  eq(r[1].csvDate,"2026-09-20");
-  eq(r[1].cats.securities,3700);
-});
-
-test("combineMonthly: ExcelにSBI預金の行がなければ外貨預り金を引かない", ()=>{
-  const base=BASE.filter(r=>!(r.kind==="口座預金"&&r.item==="SBI証券"));
-  const r=combineMonthly(mk("2026-09-29",base),[{date:"2026-09-15",broker:"SBI",total:2600,usdCash:120}]);
-  eq(r[0].cats.deposit,600);
-});
-
-test("combineMonthly: SBIの株式が複数行あっても置き換えは1回だけ", ()=>{
-  const base=[
-    {kind:"株式",item:"SBI証券(日本株・NISA)",amount:700},
-    {kind:"株式",item:"SBI証券(米国株)",amount:500},
-    {kind:"株式",item:"企業DC",amount:300},
-  ];
-  const r=combineMonthly(mk("2024-03-27",base),[{date:"2024-03-20",broker:"SBI",total:1300,usdCash:0}]);
-  eq(r[0].cats.securities,1300);
-  eq(r[0].cats.pension,300);
+test("combineMonthly: 合計はExcelの行の合計と一致する（SBI預金から何も引かない）", ()=>{
+  const r=combineMonthly(mk("2026-09-29"));
+  eq(r[0].total,BASE.reduce((s,x)=>s+x.amount,0));
+  eq(r[0].cats.deposit,1000);
 });
 
 test("combineMonthly: 過去年度の種類名と、知らない種類の分類", ()=>{
   const base=[
     {kind:"株式",item:"株式（楽天）",amount:1},
-    {kind:"株式",item:"株式（SBI）",amount:2},
-    {kind:"証券口座",item:"楽天証券口座",amount:4},
-    {kind:"銀行貯金",item:"SMBC",amount:8},
-    {kind:"口座",item:"SBI証券",amount:16},
-    {kind:"電子マネー",item:"楽天cash",amount:32},
-    {kind:"不動産",item:"土地",amount:64},
+    {kind:"株式",item:"SBI証券(米国株)",amount:2},
+    {kind:"株式",item:"企業DC",amount:4},
+    {kind:"証券口座",item:"楽天証券口座",amount:8},
+    {kind:"銀行貯金",item:"SMBC",amount:16},
+    {kind:"口座",item:"SBI証券",amount:32},
+    {kind:"電子マネー",item:"楽天cash",amount:64},
+    {kind:"不動産",item:"土地",amount:128},
+    {kind:"債権",item:"他社",amount:256},
   ];
-  eq(combineMonthly(mk("2022-04-02",base),[])[0].cats,
-    {securities:3,pension:0,deposit:28,crypto:0,cash:32,other:64});
-});
-
-test("combineMonthly: 知らない証券会社しかない日はCSVなし扱い", ()=>{
-  eq(combineMonthly(EX,[{date:"2026-09-15",broker:"その他",total:5,usdCash:0}])[1].csvDate,null);
+  eq(combineMonthly(mk("2022-04-02",base))[0].cats,
+    {securities:3,pension:4,deposit:56,crypto:0,cash:64,other:384});
 });
 
 test("combineMonthly: Excelが空なら空配列", ()=>{
-  eq(combineMonthly([],[{date:"2026-09-15",broker:"SBI",total:5,usdCash:0}]),[]);
-});
-
-test("summarizeHoldings: 日付・証券会社ごとに合計し、外貨預り金を分けて数える", ()=>{
-  eq(summarizeHoldings([
-    {date:"2026-09-15",broker:"SBI",code:"7203",value:100},
-    {date:"2026-09-15",broker:"SBI",code:"現金",value:30},
-    {date:"2026-09-15",broker:"楽天",code:"投信",value:50},
-    {date:"2026-09-01",broker:"SBI",code:"AAPL",value:70},
-  ]),[
-    {date:"2026-09-01",broker:"SBI",total:70,usdCash:0},
-    {date:"2026-09-15",broker:"SBI",total:130,usdCash:30},
-    {date:"2026-09-15",broker:"楽天",total:50,usdCash:0},
-  ]);
-});
-
-test("summarizeHoldings: 証券会社が記録されていない行と、数値でない金額は無視する", ()=>{
-  eq(summarizeHoldings([
-    {date:"2026-07-01",broker:"",code:"7203",value:100},
-    {date:"2026-07-01",broker:null,code:"7203",value:100},
-    {date:"2026-07-01",broker:"SBI",code:"7203",value:"abc"},
-    {date:"2026-07-01",broker:"SBI",code:"7203",value:"40"},
-  ]),[{date:"2026-07-01",broker:"SBI",total:40,usdCash:0}]);
-  eq(summarizeHoldings(null),[]);
+  eq(combineMonthly([]),[]);
+  eq(combineMonthly(null),[]);
 });
 
 test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・その他", ()=>{

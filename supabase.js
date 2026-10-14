@@ -212,15 +212,6 @@
     return rows.map(r=>({date:r.record_date, kind:r.kind, item:r.item, amount:Number(r.amount)}));
   }
 
-  // 資産全体の合算に使うため、全日付の保有明細を必要な列だけ取得する
-  async function sbLoadAllHoldings(){
-    if(!sbEnabled()) return null;
-    const rows=await sbFetchAll("holdings?select=snapshot_date,broker,code,value&order=snapshot_date.asc,id.asc");
-    if(!rows){ sbStatus("error"); return null; }
-    sbStatus("ok");
-    return rows.map(r=>({date:r.snapshot_date, broker:r.broker||"", code:r.code||"", value:Number(r.value)}));
-  }
-
   // 月次資産を保存する。ブックに全年度が入っているので、差分を取らずに全件入れ替える。
   // INSERTは1回にまとめる（1文＝1トランザクションなので、途中までしか入らない状態にならない。
   // 一部だけ残ると、次回起動時にその欠けたデータで手元のキャッシュを上書きしてしまう）
@@ -252,7 +243,6 @@
   window.sbDeleteDay=sbDeleteDay;
   window.sbDeleteAll=sbDeleteAll;
   window.sbLoadMonthlyAssets=sbLoadMonthlyAssets;
-  window.sbLoadAllHoldings=sbLoadAllHoldings;
   window.sbSaveMonthlyAssets=sbSaveMonthlyAssets;
 
   // 設定が無いことは起動時点で分かるので、その場で表示しておく

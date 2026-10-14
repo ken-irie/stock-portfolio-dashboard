@@ -882,12 +882,9 @@ document.getElementById("reset").addEventListener("click",()=>{
   srcEl.style.color="";
 });
 
-// ===== 資産全体（月次資産Excel＋CSVの合算） =====
+// ===== 資産全体（月次資産Excel） =====
 const MA_KEY="kabu_monthly_assets_v1";
 let maLocalWrite=false;     // 起動後にExcelを読み込んだか（DBからの読み戻しで上書きしないため）
-let BT_DB=[];               // DBの保有明細から集計した、日付・証券会社ごとの合計
-const BT_LOCAL=new Map();   // この画面で読み込んだ日（値は集計結果）と削除した日（値はnull）。DBより優先する
-let btCleared=false;        // 履歴クリア後は、DBの読み戻し結果を使わない
 const taSvg=document.getElementById("taSvg");
 const taDetail=document.getElementById("taDetail");
 let taRange=12;             // 表示期間（月数、0=全期間）
@@ -901,23 +898,12 @@ function loadMA(){
 }
 function saveMA(rows){ try{ localStorage.setItem(MA_KEY,JSON.stringify(rows)); }catch{} }
 
-function brokerTotals(){
-  const out=BT_DB.filter(b=>!BT_LOCAL.has(b.date));
-  for(const v of BT_LOCAL.values()) if(v) out.push(...v);
-  return out;
-}
-// CSVを読み込んだ日（rows）・削除した日（null）を、資産全体の合算に反映する
-function setLocalBrokerDay(day,rows){
-  BT_LOCAL.set(day, rows ? summarizeHoldings(rows.map(r=>({date:day,broker:r.broker,code:r.code,value:r.value}))) : null);
-  renderTotal();
-}
 function taMsg(t){ document.getElementById("taInfo").textContent=t; }
 const yen=v=>"¥"+fmt(Math.round(v));
 const posSum=m=>ASSET_CATS.reduce((s,c)=>s+Math.max(0,m.cats[c.key]),0);
 
 function taTipHTML(m){
-  const src=m.csvDate ? "CSV "+m.csvDate.replace(/-/g,"/")+" ＋ Excel" : "Excelのみ";
-  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b><small>${src}</small></div>`+
+  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b></div>`+
     ASSET_CATS.filter(c=>m.cats[c.key]).map(c=>
       `<div class="tip-r"><span><span class="tip-dot" style="background:${c.color}"></span>${c.label}</span>`+
       `<b>${yen(m.cats[c.key])}</b></div>`).join("")+
@@ -942,7 +928,7 @@ function renderMix(m){
 }
 
 function renderTotal(){
-  const all=combineMonthly(loadMA(),brokerTotals());
+  const all=combineMonthly(loadMA());
   taClearSel();
   taSvg.innerHTML=""; TBARS=[];
   const sp=histNarrow.matches;
@@ -1011,12 +997,6 @@ function renderTotal(){
       r.setAttribute("fill",c.color);
       g.appendChild(r);
       acc+=v;
-    }
-    if(m.csvDate){                          // CSVで置き換えた月の印
-      const dot=document.createElementNS(NS,"circle");
-      dot.setAttribute("cx",cx); dot.setAttribute("cy",H-padB+8); dot.setAttribute("r",2.5);
-      dot.setAttribute("fill","#e3c477");
-      g.appendChild(dot);
     }
     taSvg.appendChild(g);
     TBARS.push({x:cx,g,m});
@@ -1138,7 +1118,6 @@ function saveSnapshot(dateStr){
   renderHistory();
   histLocalWrite=true;                             // 読み戻しより手元の読み込みを優先する
   sbSaveSnapshot({date:day,total,cost,rows:RAW});   // DB保存は待たない（描画をネットワークに引きずられないため）
-  setLocalBrokerDay(day,RAW);                      // 資産全体の合算にもすぐ反映する
 }
 
 let histRange=0;   // 表示期間（月数、0=全期間）
@@ -1309,8 +1288,6 @@ document.getElementById("histClear").addEventListener("click",()=>{
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     curDate="";
     buildDateSelector(loadHist());                   // 消した日付を選べないようにする
-    BT_DB=[]; BT_LOCAL.clear(); btCleared=true;      // 資産全体の合算からもCSVを外す
-    renderTotal();
     sbDeleteAll();
   }
 });
@@ -1359,7 +1336,6 @@ function delHistoryDay(day){
   showSeq++;                                       // 取得中の表示切り替えを無効化する
   if(curDate===day) curDate="";
   buildDateSelector(loadHist());                   // 消した日付を選べないようにする
-  setLocalBrokerDay(day,null);                     // 資産全体の合算からも外す
   sbDeleteDay(day);
   return true;
 }
@@ -1441,7 +1417,7 @@ buildDateSelector(loadHist());
 
 // Supabaseから資産推移を読み戻す。localStorageは同期キャッシュ扱いで、
 // 取得できたらその内容で置き換えて描画し直す。ステータス表示は supabase.js 側が更新する。
-(async function hydrateFromDB(){
+const histHydrated=(async function hydrateFromDB(){
   if(!sbEnabled()) return;          // 未設定時は supabase.js 側で「DB未設定」表示済み
   const rows=await sbLoadHistory();
   if(histLocalWrite) return;        // 取得を待つ間にCSVを読み込んだ → そちらが新しいので上書きしない
@@ -1456,12 +1432,12 @@ buildDateSelector(loadHist());
 histNarrow.addEventListener("change",()=>renderTotal());
 renderTotal();
 
-// 月次資産と保有明細をSupabaseから読み戻す。localStorageの月次資産は同期キャッシュ扱い
+// 月次資産をSupabaseから読み戻す。localStorageの月次資産は同期キャッシュ扱い
 (async function hydrateTotalFromDB(){
   if(!sbEnabled()) return;
-  const [ma,hold]=await Promise.all([sbLoadMonthlyAssets(),sbLoadAllHoldings()]);
-  if(!ma||!hold) sbStatus("error");              // 後から終わった方の「成功」で失敗表示が消えないようにする
+  const ma=await sbLoadMonthlyAssets();
+  await histHydrated;                            // 推移の読み戻しが後に終わると、その「成功」で失敗表示が消えるため待つ
+  if(!ma) sbStatus("error");
   if(ma&&ma.length&&!maLocalWrite) saveMA(ma);   // DBが空・失敗なら手元のキャッシュを残す
-  if(hold&&!btCleared) BT_DB=summarizeHoldings(hold);
   renderTotal();
 })();
