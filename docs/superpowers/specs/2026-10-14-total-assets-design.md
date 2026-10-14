@@ -187,7 +187,7 @@ Excelの記録日ごとに、次の手順で資産全体を計算する。純粋
 | `README.md` | 変更 | 機能説明とテーブル作成SQLを追記 |
 | `test/assets.test.html` | 新規 | `assets.js` の単体テスト |
 
-SheetJSは cdnjs から固定バージョンで読み込む。公開版で外部CDNが使えない事情があれば、リポジトリに同梱する（実装計画で確認する）。
+SheetJSは公式CDN（cdn.sheetjs.com）から固定バージョン 0.20.3 を `defer` で読み込む（0.20系は cdnjs / npm に公開されていないため）。Excelを選んだときにだけ使うので、CDNが遅くても画面の表示は止めない。
 
 ## 8. テスト
 

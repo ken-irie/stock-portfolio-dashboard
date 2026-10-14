@@ -157,7 +157,8 @@
     </div>
   </div>
 
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- Excel読み込み用。押したときにだけ使うので、CDNが遅くても画面の表示を止めないよう defer にする -->
+<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="sectors.js?v=20261014a"></script>
 <script src="assets.js?v=20261014a"></script>
 <script src="supabase-config.js"></script>

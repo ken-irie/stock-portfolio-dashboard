@@ -1460,6 +1460,7 @@ renderTotal();
 (async function hydrateTotalFromDB(){
   if(!sbEnabled()) return;
   const [ma,hold]=await Promise.all([sbLoadMonthlyAssets(),sbLoadAllHoldings()]);
+  if(!ma||!hold) sbStatus("error");              // 後から終わった方の「成功」で失敗表示が消えないようにする
   if(ma&&ma.length&&!maLocalWrite) saveMA(ma);   // DBが空・失敗なら手元のキャッシュを残す
   if(hold&&!btCleared) BT_DB=summarizeHoldings(hold);
   renderTotal();
