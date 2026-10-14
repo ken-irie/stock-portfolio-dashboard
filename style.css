@@ -269,6 +269,7 @@
   .total-wrap{padding:24px 32px 0;}
   #taSvg .ta-bar{transition:opacity .2s;}
   #taSvg.has-sel .ta-bar:not(.sel){opacity:.3;}
+  #taSvg .ta-prov rect{opacity:.45;}   /* 最後の記録日より後のCSVで作った暫定の棒 */
   .tip-r .tip-dot{display:inline-block;margin-right:6px;vertical-align:middle;}
   .ta-mix{padding:0 28px 22px;}
   .ta-mixbar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--line-soft);}

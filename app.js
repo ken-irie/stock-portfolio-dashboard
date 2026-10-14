@@ -871,6 +871,8 @@ let taRange=12;             // 表示期間（月数、0=全期間）
 let taW=1040;
 let TBARS=[];               // ホバー・タップ検索用の棒の座標
 let taSel=-1;               // スマホでタップ中の棒（TBARSの添字）
+let provDB=null;            // 暫定の棒用：DBから取った、最後の記録日より後で最新のCSVの日の明細 {date, rows}
+const provLocal=new Map();  // 暫定の棒用：この画面で読み込んだCSVの日 → 明細（nullは削除した日）。DBより優先する
 
 function loadMA(){
   try{ const a=JSON.parse(localStorage.getItem(MA_KEY)); return Array.isArray(a)?a:[]; }
@@ -878,12 +880,36 @@ function loadMA(){
 }
 function saveMA(rows){ try{ localStorage.setItem(MA_KEY,JSON.stringify(rows)); }catch{} }
 
+// 暫定の棒に使う明細（手元とDBのうち、最新のCSVの日のもの）
+function provHoldings(){
+  const src=new Map();
+  if(provDB) src.set(provDB.date,provDB.rows);
+  for(const [d,rows] of provLocal){ if(rows) src.set(d,rows); else src.delete(d); }
+  const d=[...src.keys()].sort().pop();
+  return d ? src.get(d).map(r=>({date:d,broker:r.broker,code:r.code,value:r.value})) : [];
+}
+function setProvLocal(day,rows){ provLocal.set(day,rows); renderTotal(); }
+
+// 最後の記録日より後で最新のCSVの日の明細を、DBから取っておく
+async function loadProvFromDB(){
+  const months=combineMonthly(loadMA());
+  if(!months.length||!sbEnabled()) return;
+  const base=months[months.length-1].date;
+  const h=loadHist().filter(x=>x.date>base&&x.n).pop();
+  if(!h||provLocal.has(h.date)) return;
+  const rows=await sbLoadHoldings(h.date);
+  if(rows&&loadHist().some(x=>x.date===h.date)) provDB={date:h.date,rows};   // 取得中に削除された日は使わない
+}
+
 function taMsg(t){ document.getElementById("taInfo").textContent=t; }
 const yen=v=>"¥"+fmt(Math.round(v));
 const posSum=m=>ASSET_CATS.reduce((s,c)=>s+Math.max(0,m.cats[c.key]),0);
 
 function taTipHTML(m){
-  return `<div class="tip-h"><b>${m.date.replace(/-/g,"/")}</b></div>`+
+  const head=m.provisional
+    ? `<b>${m.date.replace(/-/g,"/")} 暫定</b><small>CSV ${m.date.replace(/-/g,"/")} ＋ Excel ${m.baseDate.replace(/-/g,"/")}</small>`
+    : `<b>${m.date.replace(/-/g,"/")}</b>`;
+  return `<div class="tip-h">${head}</div>`+
     ASSET_CATS.filter(c=>m.cats[c.key]).map(c=>
       `<div class="tip-r"><span><span class="tip-dot" style="background:${c.color}"></span>${c.label}</span>`+
       `<b>${yen(m.cats[c.key])}</b></div>`).join("")+
@@ -947,8 +973,11 @@ function renderTotal(){
     const cut=isoLocal(new Date(y,m-1-taRange,d).getTime());
     list=all.filter(x=>x.date>cut);
   }
+  // 最後の記録日より後にCSVがあれば、右端に「暫定」の棒を足す（総資産・前月比はExcelの値のまま）
+  const prov=provisionalMonth(loadMA(),provHoldings());
+  if(prov) list=[...list,prov];
   document.getElementById("taRange").textContent=
-    list[0].date.replace(/-/g,"/")+" ～ "+last.date.replace(/-/g,"/");
+    list[0].date.replace(/-/g,"/")+" ～ "+last.date.replace(/-/g,"/")+(prov?"（暫定 "+prov.date.replace(/-/g,"/")+"）":"");
   const top=niceCeil(Math.max(...list.map(posSum))*1.05);
   const Y=v=>padT+(1-v/top)*(H-padT-padB);
   for(let i=0;i<=4;i++){
@@ -966,7 +995,7 @@ function renderTotal(){
   list.forEach((m,i)=>{
     const cx=padL+slot*(i+0.5);
     const g=document.createElementNS(NS,"g");
-    g.setAttribute("class","ta-bar");
+    g.setAttribute("class",m.provisional?"ta-bar ta-prov":"ta-bar");
     let acc=0;
     for(const c of ASSET_CATS){
       const v=Math.max(0,m.cats[c.key]);   // 負の値（SBI預金の差し引き）は棒に描かない
@@ -985,7 +1014,7 @@ function renderTotal(){
   list.forEach((m,i)=>{
     if(i%step!==0 && i!==list.length-1) return;
     svgText({x:padL+slot*(i+0.5),y:H-padB+26,fill:"#7e8496","font-size":fs-0.5,"font-family":"Sora",
-      "text-anchor":"middle",t:m.date.slice(2,7).replace("-","/")},taSvg);
+      "text-anchor":"middle",t:m.provisional?"暫定":m.date.slice(2,7).replace("-","/")},taSvg);
   });
 }
 
@@ -1047,6 +1076,7 @@ document.getElementById("xlsxFile").addEventListener("change",async e=>{
   renderTotal();
   taMsg(res.years+"年度分・"+res.months+"か月を取り込みました");
   sbSaveMonthlyAssets(res.rows);            // DB保存は待たない（失敗時は「DB同期失敗」表示）
+  loadProvFromDB().then(renderTotal);       // 記録日が変わったので、暫定の棒に使うCSVの日を選び直す
 });
 
 // ===== 資産推移（CSV読込時にブラウザへ自動記録） =====
@@ -1098,6 +1128,7 @@ function saveSnapshot(dateStr){
   renderHistory();
   histLocalWrite=true;                             // 読み戻しより手元の読み込みを優先する
   sbSaveSnapshot({date:day,total,cost,rows:RAW});   // DB保存は待たない（描画をネットワークに引きずられないため）
+  setProvLocal(day,RAW);                           // 資産全体の暫定の棒にもすぐ反映する
 }
 
 let histRange=0;   // 表示期間（月数、0=全期間）
@@ -1268,6 +1299,7 @@ document.getElementById("histClear").addEventListener("click",()=>{
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     curDate="";
     buildDateSelector(loadHist());                   // 消した日付を選べないようにする
+    provDB=null; provLocal.clear(); renderTotal();   // 資産全体の暫定の棒も消す
     sbDeleteAll();
   }
 });
@@ -1316,6 +1348,7 @@ function delHistoryDay(day){
   showSeq++;                                       // 取得中の表示切り替えを無効化する
   if(curDate===day) curDate="";
   buildDateSelector(loadHist());                   // 消した日付を選べないようにする
+  setProvLocal(day,null);                          // 資産全体の暫定の棒からも外す
   sbDeleteDay(day);
   return true;
 }
@@ -1416,8 +1449,9 @@ renderTotal();
 (async function hydrateTotalFromDB(){
   if(!sbEnabled()) return;
   const ma=await sbLoadMonthlyAssets();
-  await histHydrated;                            // 推移の読み戻しが後に終わると、その「成功」で失敗表示が消えるため待つ
-  if(!ma) sbStatus("error");
+  await histHydrated;                            // 暫定の棒の日付選びに推移の記録を使うため待つ
   if(ma&&ma.length&&!maLocalWrite) saveMA(ma);   // DBが空・失敗なら手元のキャッシュを残す
+  await loadProvFromDB();
+  if(!ma) sbStatus("error");                     // 後から終わった読み込みの「成功」で失敗表示が消えないよう、最後に出す
   renderTotal();
 })();
