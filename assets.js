@@ -61,7 +61,7 @@
         const k=str(row[h.c]);
         if(k==="合計") break;               // 「今月-先月」や「理想」の表は読まない
         if(k) kind=k;
-        const item=str(row[h.c+1]);
+        const item=str(row[h.c+1])||k;      // 「ポケカ」のように資産欄が空の行は種類名を資産名にする
         if(!kind||!item) continue;
         for(const {j,d} of cols){
           const v=row[j];
@@ -85,6 +85,7 @@
     {key:"deposit",    label:"預金",             color:"#5bc6d8"},
     {key:"crypto",     label:"仮想通貨",         color:"#a98bff"},
     {key:"cash",       label:"現金・電子マネー", color:"#ff9f6b"},
+    {key:"pokeca",     label:"ポケカ",           color:"#ff6b8a"},
     {key:"other",      label:"その他",           color:"#7e8496"},
   ];
   const BOND_KINDS=new Set(["債権","債券"]);
@@ -98,6 +99,7 @@
     if(DEPOSIT_KINDS.has(kind)) return "deposit";
     if(kind==="仮想通貨") return "crypto";
     if(CASH_KINDS.has(kind)) return "cash";
+    if(kind==="ポケカ") return "pokeca";
     return "other";
   }
 
