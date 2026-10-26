@@ -8,6 +8,9 @@
     "cf:deploy": "node worker/build.mjs && wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.152.0"
+  },
+  "overrides": {
+    "undici": "7.30.1"
   }
 }
