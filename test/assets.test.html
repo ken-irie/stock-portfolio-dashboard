@@ -159,7 +159,7 @@ const BASE=[
 ];
 const mk=(date,base)=>(base||BASE).map(r=>Object.assign({date},r));
 const EX=[...mk("2026-09-29"),...mk("2026-08-26")];
-const CATS={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,other:0};
+const CATS={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,pokeca:0,other:0};
 
 test("combineMonthly: Excelの値を記録日ごと・カテゴリ別にまとめ、日付順に並べる", ()=>{
   eq(combineMonthly(EX),[
@@ -187,7 +187,7 @@ test("combineMonthly: 過去年度の種類名と、知らない種類の分類"
     {kind:"債権",item:"他社",amount:256},
   ];
   eq(combineMonthly(mk("2022-04-02",base))[0].cats,
-    {securities:3,pension:4,deposit:56,crypto:0,cash:64,other:384});
+    {securities:3,pension:4,deposit:56,crypto:0,cash:64,pokeca:0,other:384});
 });
 
 test("combineMonthly: Excelが空なら空配列", ()=>{
@@ -204,7 +204,7 @@ test("provisionalMonth: 最後の記録日より後のCSVでSBIの株式・債�
     H("2026-10-12","SBI","債券",160),
   ]);
   eq(r,{date:"2026-10-12",baseDate:"2026-09-29",total:5035,
-    cats:{securities:3560,pension:400,deposit:1000,crypto:50,cash:25,other:0},provisional:true});
+    cats:{securities:3560,pension:400,deposit:1000,crypto:50,cash:25,pokeca:0,other:0},provisional:true});
 });
 
 test("provisionalMonth: 楽天とSBIの両方があれば両方差し替える", ()=>{
@@ -241,8 +241,23 @@ test("provisionalMonth: SBIの株式が複数行あっても差し替えは1回�
   eq(r.total,1400);
 });
 
-test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・その他", ()=>{
-  eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","other"]);
+test("parseAssetSheets: 資産欄が空のポケカ行は種類名を資産名として読み、ポケカに分ける", ()=>{
+  const s={name:"2026年度　資産", rows:[
+    [null,null,null,"2026-09-29","2026-10-26"],
+    [null,"種類","資産","９月","１０月"],
+    [null,"電子マネー","WAON",4404,4404],
+    [null,"ポケカ",null,309400,309400],
+    [null,"合計","合計",313804,313804],
+  ]};
+  const r=parseAssetSheets([s]);
+  eq(r.rows.filter(x=>x.kind==="ポケカ").map(x=>x.item),["ポケカ","ポケカ"]);
+  const m=combineMonthly(r.rows);
+  eq(m.map(x=>x.cats.pokeca),[309400,309400]);
+  eq(m.map(x=>x.total),[313804,313804]);
+});
+
+test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・ポケカ・その他", ()=>{
+  eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","pokeca","other"]);
 });
 
 // === /tests ===
