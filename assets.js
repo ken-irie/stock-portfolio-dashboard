@@ -153,6 +153,54 @@
     return {date, baseDate, total:ASSET_CATS.reduce((s,c)=>s+cats[c.key],0), cats, provisional:true};
   }
 
+  // ポートフォリオ比率の分類（表示順）
+  const PF_CATS=[
+    {key:"us",      label:"米国株",           color:"#5b9dff"},
+    {key:"jp",      label:"日本株",           color:"#e3c477"},
+    {key:"fund",    label:"投資信託",         color:"#3ddc97"},
+    {key:"bond",    label:"債券",             color:"#9ad26b"},
+    {key:"pension", label:"企業DC・持株",     color:"#2fb9a0"},
+    {key:"crypto",  label:"仮想通貨",         color:"#a98bff"},
+    {key:"deposit", label:"預金",             color:"#5bc6d8"},
+    {key:"cash",    label:"現金・電子マネー", color:"#ff9f6b"},
+    {key:"pokeca",  label:"ポケカ",           color:"#ff6b8a"},
+    {key:"unknown", label:"証券（内訳なし）", color:"#a7adba"},
+    {key:"other",   label:"その他",           color:"#7e8496"},
+  ];
+  const PF_SPLIT=["us","jp","fund","bond"];   // CSVの区分のうち証券を割る先。cash（米ドル現金）はExcelの預金に入っているので使わない
+
+  // Excelの最新月を分類別に出す。証券（楽天・SBI）はExcelの金額を正とし、CSVの構成比で株・投信・債券に割る。
+  // CSVのない証券会社の分は「証券（内訳なし）」に残す
+  function portfolioMix(excelRows,holdings){
+    const rows=excelRows||[];
+    if(!rows.length) return null;
+    const date=rows.reduce((a,r)=>r.date>a?r.date:a,"");
+    const byBroker={};
+    let holdDate=null;
+    for(const h of holdings||[]){
+      const v=Number(h&&h.value);
+      if(!PF_SPLIT.includes(h&&h.cat)||!isFinite(v)||v<=0) continue;
+      const b=byBroker[h.broker]||(byBroker[h.broker]={sum:0,parts:{}});
+      b.parts[h.cat]=(b.parts[h.cat]||0)+v;
+      b.sum+=v;
+      if(!holdDate||h.date>holdDate) holdDate=h.date;
+    }
+    const cats={};
+    PF_CATS.forEach(c=>cats[c.key]=0);
+    for(const r of rows){
+      if(r.date!==date) continue;
+      const c=catOf(r.kind,r.item);
+      if(c==="other"&&BOND_KINDS.has(r.kind)){ cats.bond+=r.amount; continue; }   // SBI以外の債券
+      if(c!=="securities"){ cats[c]+=r.amount; continue; }
+      const b=byBroker[brokerOf(r.kind,r.item)];
+      if(!b){ cats.unknown+=r.amount; continue; }
+      for(const k in b.parts) cats[k]+=r.amount*b.parts[k]/b.sum;
+    }
+    return {date, holdDate, cats};
+  }
+
+  window.PF_CATS=PF_CATS;
+  window.portfolioMix=portfolioMix;
   window.provisionalMonth=provisionalMonth;
   window.workbookToSheets=workbookToSheets;
   window.parseAssetSheets=parseAssetSheets;
