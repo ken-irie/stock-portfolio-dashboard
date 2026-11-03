@@ -260,6 +260,37 @@ test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通
   eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","pokeca","other"]);
 });
 
+const PX=[
+  {date:"2026-09-30",kind:"株式",item:"楽天証券",amount:999},
+  {date:"2026-10-31",kind:"株式",item:"楽天証券",amount:1000},
+  {date:"2026-10-31",kind:"株式",item:"SBI証券",amount:2000},
+  {date:"2026-10-31",kind:"株式",item:"持株",amount:500},
+  {date:"2026-10-31",kind:"債券",item:"個人向け国債",amount:300},
+  {date:"2026-10-31",kind:"仮想通貨",item:"BTC",amount:400},
+  {date:"2026-10-31",kind:"口座預金",item:"銀行",amount:600},
+];
+const PH=(broker,cat,value)=>({date:"2026-11-03",broker,code:"x",cat,value});
+
+test("portfolioMix: 楽天を構成比で按分し、CSVのないSBIは内訳なしに残す。他はExcelのまま", ()=>{
+  const r=portfolioMix(PX,[PH("楽天","us",300),PH("楽天","jp",100)]);
+  eq(r.date,"2026-10-31");
+  eq(r.holdDate,"2026-11-03");
+  eq([r.cats.us,r.cats.jp,r.cats.unknown],[750,250,2000]);
+  eq([r.cats.pension,r.cats.bond,r.cats.crypto,r.cats.deposit],[500,300,400,600]);
+});
+
+test("portfolioMix: 米ドル現金（cat cash）は構成比に入れず、合計はExcelの最新月と一致する", ()=>{
+  const r=portfolioMix(PX,[PH("楽天","fund",100),PH("SBI","bond",100),PH("SBI","cash",900)]);
+  eq([r.cats.fund,r.cats.bond,r.cats.unknown],[1000,2300,0]);
+  eq(PF_CATS.reduce((s,c)=>s+r.cats[c.key],0),combineMonthly(PX).pop().total);
+});
+
+test("portfolioMix: 明細がなければ証券は全額内訳なし。Excelが空ならnull", ()=>{
+  const r=portfolioMix(PX,[]);
+  eq([r.cats.unknown,r.holdDate],[3000,null]);
+  eq(portfolioMix([],[]),null);
+});
+
 // === /tests ===
 
 (async function run(){

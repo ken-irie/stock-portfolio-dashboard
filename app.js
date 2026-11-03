@@ -880,22 +880,21 @@ function loadMA(){
 }
 function saveMA(rows){ try{ localStorage.setItem(MA_KEY,JSON.stringify(rows)); }catch{} }
 
-// 暫定の棒に使う明細（手元とDBのうち、最新のCSVの日のもの）
+// 暫定の棒と比率の内訳に使う明細（手元とDBのうち、最新のCSVの日のもの）
 function provHoldings(){
   const src=new Map();
   if(provDB) src.set(provDB.date,provDB.rows);
   for(const [d,rows] of provLocal){ if(rows) src.set(d,rows); else src.delete(d); }
   const d=[...src.keys()].sort().pop();
-  return d ? src.get(d).map(r=>({date:d,broker:r.broker,code:r.code,value:r.value})) : [];
+  return d ? src.get(d).map(r=>({date:d,broker:r.broker,code:r.code,cat:r.cat,value:r.value})) : [];
 }
 function setProvLocal(day,rows){ provLocal.set(day,rows); renderTotal(); }
 
-// 最後の記録日より後で最新のCSVの日の明細を、DBから取っておく
+// 最新のCSVの日の明細を、DBから取っておく（暫定の棒は最後の記録日より後の日だけを使う）
 async function loadProvFromDB(){
   const months=combineMonthly(loadMA());
   if(!months.length||!sbEnabled()) return;
-  const base=months[months.length-1].date;
-  const h=loadHist().filter(x=>x.date>base&&x.n).pop();
+  const h=loadHist().filter(x=>x.n).pop();
   if(!h||provLocal.has(h.date)) return;
   const rows=await sbLoadHoldings(h.date);
   if(rows&&loadHist().some(x=>x.date===h.date)) provDB={date:h.date,rows};   // 取得中に削除された日は使わない
@@ -923,11 +922,12 @@ function taClearSel(){
   taDetail.hidden=true;
 }
 
-function renderMix(m){
-  const parts=ASSET_CATS.map(c=>({c,v:Math.max(0,m.cats[c.key])})).filter(x=>x.v>0);
+function renderMix(){
+  const m=portfolioMix(loadMA(),provHoldings());
+  const parts=PF_CATS.map(c=>({c,v:Math.max(0,m.cats[c.key])})).filter(x=>x.v>0);
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
-    `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳</div>`+
+    `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}</div>`+
     `<div class="ta-mixbar">${parts.map(x=>`<span style="width:${x.v/sum*100}%;background:${x.c.color}"></span>`).join("")}</div>`+
     `<div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
@@ -966,7 +966,7 @@ function renderTotal(){
   }else{
     fEl.textContent="–"; pEl.textContent=""; fEl.className=""; pEl.className="";
   }
-  renderMix(last);
+  renderMix();
   // 期間は最新の記録日から数える（Excelの更新が止まっていても空にならないように）
   let list=all;
   if(taRange){
