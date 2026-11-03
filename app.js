@@ -871,6 +871,7 @@ let taRange=12;             // 表示期間（月数、0=全期間）
 let taW=1040;
 let TBARS=[];               // ホバー・タップ検索用の棒の座標
 let taSel=-1;               // スマホでタップ中の棒（TBARSの添字）
+let MIXPARTS=[];            // ホバー用の円グラフの扇
 let provDB=null;            // 暫定の棒用：DBから取った、最後の記録日より後で最新のCSVの日の明細 {date, rows}
 const provLocal=new Map();  // 暫定の棒用：この画面で読み込んだCSVの日 → 明細（nullは削除した日）。DBより優先する
 
@@ -928,11 +929,46 @@ function renderMix(){
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
     `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}</div>`+
-    `<div class="ta-mixbar">${parts.map(x=>`<span style="width:${x.v/sum*100}%;background:${x.c.color}"></span>`).join("")}</div>`+
-    `<div class="ta-mixlist">${parts.map(x=>
+    `<div class="ta-mixbody">${mixDonut(parts,sum)}<div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
-      `<b>${yen(x.v)}</b><em>${(x.v/sum*100).toFixed(1)}%</em></div>`).join("")}</div>`;
+      `<b>${yen(x.v)}</b><em>${(x.v/sum*100).toFixed(1)}%</em></div>`).join("")}</div></div>`;
 }
+
+// 比率の円グラフ。3%未満の扇には数字を書かない（隣の数字と重なるため。値は横の一覧で読める）
+function mixDonut(parts,sum){
+  const c=120, rOut=112, rIn=70;
+  const pt=(r,a)=>(c+r*Math.cos(a)).toFixed(2)+" "+(c+r*Math.sin(a)).toFixed(2);
+  let ang=-Math.PI/2, paths="", labels="";
+  parts.forEach((x,i)=>{
+    const frac=x.v/sum;
+    // 100%だと始点=終点で円弧が消えるため、ごく僅かに欠けさせて描く
+    const a0=ang, a1=a0+Math.min(frac*2*Math.PI,2*Math.PI-0.0005), large=a1-a0>Math.PI?1:0;
+    ang+=frac*2*Math.PI;
+    paths+=`<path data-i="${i}" fill="${x.c.color}" d="M${pt(rOut,a0)} A${rOut} ${rOut} 0 ${large} 1 ${pt(rOut,a1)} `+
+      `L${pt(rIn,a1)} A${rIn} ${rIn} 0 ${large} 0 ${pt(rIn,a0)} Z"/>`;
+    if(frac>=0.03){
+      const [lx,ly]=pt((rOut+rIn)/2,(a0+a1)/2).split(" ");
+      labels+=`<text class="ta-donutpct" x="${lx}" y="${ly}">${(frac*100).toFixed(1)}</text>`;
+    }
+  });
+  MIXPARTS=parts.map(x=>({...x,share:x.v/sum*100}));
+  return `<svg class="ta-donut" viewBox="0 0 240 240" role="img" aria-label="資産クラス別の比率">${paths}${labels}`+
+    `<text class="ta-donutlabel" x="${c}" y="${c-13}">合計</text>`+
+    `<text class="ta-donutsum" x="${c}" y="${c+10}">${yen(sum)}</text></svg>`;
+}
+const taMixEl=document.getElementById("taMix");
+taMixEl.addEventListener("mousemove",e=>{
+  const p=e.target.closest&&e.target.closest("path[data-i]");
+  if(touchUI.matches) return;
+  if(!p){ hideTip(); return; }
+  const x=MIXPARTS[+p.dataset.i];
+  tipEl.innerHTML=`<div class="tip-h"><span class="tip-dot" style="background:${x.c.color}"></span><b>${x.c.label}</b></div>`+
+    `<div class="tip-r"><span>金額</span><b>${yen(x.v)}</b></div>`+
+    `<div class="tip-r"><span>構成比</span><b>${x.share.toFixed(1)}%</b></div>`;
+  tipEl.style.display="block";
+  moveTip(e);
+});
+taMixEl.addEventListener("mouseleave",()=>{ if(!touchUI.matches) hideTip(); });
 
 function renderTotal(){
   const all=combineMonthly(loadMA());

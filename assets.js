@@ -157,15 +157,15 @@
   const PF_CATS=[
     {key:"us",      label:"米国株",           color:"#5b9dff"},
     {key:"jp",      label:"日本株",           color:"#e3c477"},
-    {key:"fund",    label:"投資信託",         color:"#3ddc97"},
-    {key:"bond",    label:"債券",             color:"#9ad26b"},
-    {key:"pension", label:"企業DC・持株",     color:"#2fb9a0"},
+    {key:"fund",    label:"投資信託",         color:"#e97fd6"},
+    {key:"bond",    label:"債券",             color:"#f4f0dc"},
+    {key:"pension", label:"企業DC・持株",     color:"#3ddc97"},
     {key:"crypto",  label:"仮想通貨",         color:"#a98bff"},
+    {key:"pokeca",  label:"ポケカ",           color:"#ff6b8a"},
     {key:"deposit", label:"預金",             color:"#5bc6d8"},
     {key:"cash",    label:"現金・電子マネー", color:"#ff9f6b"},
-    {key:"pokeca",  label:"ポケカ",           color:"#ff6b8a"},
     {key:"unknown", label:"証券（内訳なし）", color:"#a7adba"},
-    {key:"other",   label:"その他",           color:"#7e8496"},
+    {key:"other",   label:"その他",           color:"#6b7183"},
   ];
   const PF_SPLIT=["us","jp","fund","bond"];   // CSVの区分のうち証券を割る先。cash（米ドル現金）はExcelの預金に入っているので使わない
 
