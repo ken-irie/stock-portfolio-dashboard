@@ -427,10 +427,13 @@ function svgText(p,tgt){
 }
 
 // ===== ドーナツ描画 =====
-function renderDonut(data,total,totalCost,totalPL,totalPct){
+// 構成タブと資産全体タブで共通の作り（扇・扇内の比率・左右の引き出しラベル）。中央の文字は呼び出し側で書く
+// onPath(path,d) で扇ごとのホバー・クリックを付ける
+const RING={cx:260, cy:210};
+function drawRing(tgt,data,total,onPath){
   // 左右にラベル列の余白を確保しつつドーナツは大きく保つ
-  svg.setAttribute("viewBox","-30 -10 580 460");
-  const cx=260, cy=210, rOut=160, rIn=98;
+  tgt.setAttribute("viewBox","-30 -10 580 460");
+  const {cx,cy}=RING, rOut=160, rIn=98;
   function arc(cx,cy,r,a0,a1){
     const p0=[cx+r*Math.cos(a0), cy+r*Math.sin(a0)];
     const p1=[cx+r*Math.cos(a1), cy+r*Math.sin(a1)];
@@ -450,19 +453,13 @@ function renderDonut(data,total,totalCost,totalPL,totalPct){
     path.setAttribute("fill",d.color);
     path.setAttribute("stroke","#06070c");
     path.setAttribute("stroke-width","2.5");
-    let onOpen=null;
-    if(d.code==="group"||d.multi){
-      const key=d.code==="group" ? d.name : mergeKey(d);
-      path.style.cursor="pointer";
-      onOpen=()=>{ drill = drill===key ? null : key; render(); };
-    }
-    attachTip(path,d,total,onOpen);
-    svg.appendChild(path);
+    onPath(path,d);
+    tgt.appendChild(path);
     if(frac*100>=3){
       const mid=(a0+a1)/2, lr=(rOut+rIn)/2;
       svgText({x:cx+lr*Math.cos(mid),y:cy+lr*Math.sin(mid),fill:"#10141a",
         "font-size":15,"font-weight":700,"font-family":"Sora","text-anchor":"middle",
-        "dominant-baseline":"central",t:(frac*100).toFixed(1)});
+        "dominant-baseline":"central",t:(frac*100).toFixed(1)},tgt);
     }
     labelData.push({d,mid:(a0+a1)/2,frac});
   });
@@ -470,7 +467,7 @@ function renderDonut(data,total,totalCost,totalPL,totalPct){
   const sides={L:[],R:[]};
   labelData.filter(l=>l.frac*100>=3).forEach(l=>{
     const right=Math.cos(l.mid)>=0;
-    const showCode=(l.d.code!=="投信"&&l.d.code!=="現金"&&l.d.code!=="group"&&l.d.code!=="other");
+    const showCode=(l.d.code&&l.d.code!=="投信"&&l.d.code!=="現金"&&l.d.code!=="group"&&l.d.code!=="other");
     const lines=wrapLabel(showCode?`${l.d.name}(${l.d.code})`:l.d.name);
     sides[right?"R":"L"].push({...l, right, lines, y:cy+(rOut+10)*Math.sin(l.mid)});
   });
@@ -498,17 +495,30 @@ function renderDonut(data,total,totalCost,totalPL,totalPct){
       line.setAttribute("fill","none");
       line.setAttribute("stroke",l.d.color);
       line.setAttribute("stroke-width","1.4");
-      svg.appendChild(line);
+      tgt.appendChild(line);
       const dot=document.createElementNS(NS,"circle");
       dot.setAttribute("cx",colX);dot.setAttribute("cy",l.y);dot.setAttribute("r","2.6");
-      dot.setAttribute("fill",l.d.color);svg.appendChild(dot);
+      dot.setAttribute("fill",l.d.color);tgt.appendChild(dot);
       l.lines.forEach((ln,li)=>{
         svgText({x:l.right?colX+7:colX-7,y:l.y+li*13,fill:"#dfe3ea","font-size":12,"font-weight":600,
-          "text-anchor":l.right?"start":"end","dominant-baseline":"central",t:ln});
+          "text-anchor":l.right?"start":"end","dominant-baseline":"central",t:ln},tgt);
       });
     });
   }
   drawSide(sides.L); drawSide(sides.R);
+}
+
+function renderDonut(data,total,totalCost,totalPL,totalPct){
+  drawRing(svg,data,total,(path,d)=>{
+    let onOpen=null;
+    if(d.code==="group"||d.multi){
+      const key=d.code==="group" ? d.name : mergeKey(d);
+      path.style.cursor="pointer";
+      onOpen=()=>{ drill = drill===key ? null : key; render(); };
+    }
+    attachTip(path,d,total,onOpen);
+  });
+  const {cx,cy}=RING;
   // 中央
   const sg=totalPL>=0?"+":"", col=totalPL>=0?"#3ddc97":"#ff6b7a";
   svgText({x:cx,y:cy-26,fill:"#b9bfcc","font-size":14,"font-weight":600,"font-family":"Zen Kaku Gothic New","text-anchor":"middle",t:"証券の評価額"});
@@ -929,32 +939,20 @@ function renderMix(){
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
     `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}</div>`+
-    `<div class="ta-mixbody">${mixDonut(parts,sum)}<div class="ta-mixlist">${parts.map(x=>
+    `<div class="ta-mixbody"><div class="donut-wrap ta-donutwrap"><svg class="donut ta-donut" role="img" aria-label="資産クラス別の比率"></svg></div><div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
       `<b>${yen(x.v)}</b><em>${(x.v/sum*100).toFixed(1)}%</em></div>`).join("")}</div></div>`;
+  drawMixDonut(document.querySelector("#taMix .ta-donut"),parts,sum);
 }
 
-// 比率の円グラフ。3%未満の扇には数字を書かない（隣の数字と重なるため。値は横の一覧で読める）
-function mixDonut(parts,sum){
-  const c=120, rOut=112, rIn=70;
-  const pt=(r,a)=>(c+r*Math.cos(a)).toFixed(2)+" "+(c+r*Math.sin(a)).toFixed(2);
-  let ang=-Math.PI/2, paths="", labels="";
-  parts.forEach((x,i)=>{
-    const frac=x.v/sum;
-    // 100%だと始点=終点で円弧が消えるため、ごく僅かに欠けさせて描く
-    const a0=ang, a1=a0+Math.min(frac*2*Math.PI,2*Math.PI-0.0005), large=a1-a0>Math.PI?1:0;
-    ang+=frac*2*Math.PI;
-    paths+=`<path data-i="${i}" fill="${x.c.color}" d="M${pt(rOut,a0)} A${rOut} ${rOut} 0 ${large} 1 ${pt(rOut,a1)} `+
-      `L${pt(rIn,a1)} A${rIn} ${rIn} 0 ${large} 0 ${pt(rIn,a0)} Z"/>`;
-    if(frac>=0.03){
-      const [lx,ly]=pt((rOut+rIn)/2,(a0+a1)/2).split(" ");
-      labels+=`<text class="ta-donutpct" x="${lx}" y="${ly}">${(frac*100).toFixed(1)}</text>`;
-    }
-  });
+// 比率の円グラフ。ポートフォリオ構成タブのドーナツと同じ drawRing で描く
+function drawMixDonut(el,parts,sum){
+  const data=parts.map(x=>({name:x.c.label,color:x.c.color,value:x.v}));
+  drawRing(el,data,sum,(path,d)=>path.dataset.i=data.indexOf(d));
+  const {cx,cy}=RING;
+  svgText({x:cx,y:cy-16,fill:"#b9bfcc","font-size":14,"font-weight":600,"font-family":"Zen Kaku Gothic New","text-anchor":"middle",t:"資産全体"},el);
+  svgText({x:cx,y:cy+14,fill:"#f6f1e4","font-size":27,"font-weight":800,"font-family":"Sora","text-anchor":"middle",t:fmt(Math.round(sum))+" 円"},el);
   MIXPARTS=parts.map(x=>({...x,share:x.v/sum*100}));
-  return `<svg class="ta-donut" viewBox="0 0 240 240" role="img" aria-label="資産クラス別の比率">${paths}${labels}`+
-    `<text class="ta-donutlabel" x="${c}" y="${c-13}">合計</text>`+
-    `<text class="ta-donutsum" x="${c}" y="${c+10}">${yen(sum)}</text></svg>`;
 }
 const taMixEl=document.getElementById("taMix");
 taMixEl.addEventListener("mousemove",e=>{
