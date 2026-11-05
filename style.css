@@ -286,13 +286,9 @@
   .row .nm b .caret{display:inline-block;font-size:15px;color:#7f8794;margin:0 0 0 6px;vertical-align:-1px;}
   .row .nm b .caret.open{color:var(--gold);}
   .ta-mixbody{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:24px 32px;}
-  .ta-donut{display:block;width:380px;flex-shrink:0;}
-  .ta-donut path{stroke:#06070c;stroke-width:2;transition:filter .15s;}
-  .ta-donut path:hover{filter:brightness(1.15) saturate(1.1);}
-  .ta-donut text{text-anchor:middle;dominant-baseline:central;pointer-events:none;}
-  .ta-donutpct{fill:#10141a;font-family:"Sora";font-size:12px;font-weight:700;}
-  .ta-donutlabel{fill:var(--muted);font-size:11px;}
-  .ta-donutsum{fill:var(--text);font-family:"Sora";font-size:15px;font-weight:600;}
+  /* 構成タブと同じドーナツ（svg.donut / .donut-wrap）を使う。横の一覧と並べるため幅だけ決める */
+  .ta-donutwrap{width:560px;max-width:100%;flex-shrink:0;padding:8px 0 0;}
+  .ta-donut path{cursor:default;}
   .ta-mixlist{flex:1 1 300px;min-width:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px 24px;}
   .ta-mixrow{display:flex;align-items:center;gap:8px;font-size:13px;}
   .ta-mixrow i{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
@@ -379,7 +375,7 @@
     .tab-panel[data-panel="history"] .hist-wrap{padding-top:16px;}
     .ta-mix{padding:0 18px 18px;}
     .ta-mixbody{flex-direction:column;align-items:stretch;gap:18px;}
-    .ta-donut{width:100%;max-width:360px;margin:0 auto;}
+    .ta-donutwrap{width:100%;padding:0;}
     .ta-mixlist{grid-template-columns:1fr;}
     .row{padding:13px 16px;gap:10px;}
     .barwrap{display:none;}
