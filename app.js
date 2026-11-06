@@ -882,6 +882,7 @@ let taW=1040;
 let TBARS=[];               // ホバー・タップ検索用の棒の座標
 let taSel=-1;               // スマホでタップ中の棒（TBARSの添字）
 let MIXPARTS=[];            // ホバー用の円グラフの扇
+let mixSel=null;            // スマホでタップ中の円グラフの扇
 let provDB=null;            // 暫定の棒用：DBから取った、最後の記録日より後で最新のCSVの日の明細 {date, rows}
 const provLocal=new Map();  // 暫定の棒用：この画面で読み込んだCSVの日 → 明細（nullは削除した日）。DBより優先する
 
@@ -939,34 +940,62 @@ function renderMix(){
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
     `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}</div>`+
-    `<div class="ta-mixbody"><div class="donut-wrap ta-donutwrap"><svg class="donut ta-donut" role="img" aria-label="資産クラス別の比率"></svg></div><div class="ta-mixlist">${parts.map(x=>
+    `<div class="ta-mixbody"><div class="donut-wrap ta-donutwrap"><svg class="donut ta-donut" role="img" aria-label="資産クラス別の比率"></svg>`+
+    `<div class="chart-detail ta-mixdetail" hidden></div></div><div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
       `<b>${yen(x.v)}</b><em>${(x.v/sum*100).toFixed(1)}%</em></div>`).join("")}</div></div>`;
+  mixSel=null;
   drawMixDonut(document.querySelector("#taMix .ta-donut"),parts,sum);
 }
 
 // 比率の円グラフ。ポートフォリオ構成タブのドーナツと同じ drawRing で描く
 function drawMixDonut(el,parts,sum){
   const data=parts.map(x=>({name:x.c.label,color:x.c.color,value:x.v}));
-  drawRing(el,data,sum,(path,d)=>path.dataset.i=data.indexOf(d));
+  drawRing(el,data,sum,(path,d)=>{ path.dataset.i=data.indexOf(d); path.setAttribute("data-tap",""); });
   const {cx,cy}=RING;
   svgText({x:cx,y:cy-16,fill:"#b9bfcc","font-size":14,"font-weight":600,"font-family":"Zen Kaku Gothic New","text-anchor":"middle",t:"資産全体"},el);
   svgText({x:cx,y:cy+14,fill:"#f6f1e4","font-size":27,"font-weight":800,"font-family":"Sora","text-anchor":"middle",t:fmt(Math.round(sum))+" 円"},el);
   MIXPARTS=parts.map(x=>({...x,share:x.v/sum*100}));
 }
 const taMixEl=document.getElementById("taMix");
-taMixEl.addEventListener("mousemove",e=>{
-  const p=e.target.closest&&e.target.closest("path[data-i]");
-  if(touchUI.matches) return;
-  if(!p){ hideTip(); return; }
-  const x=MIXPARTS[+p.dataset.i];
-  tipEl.innerHTML=`<div class="tip-h"><span class="tip-dot" style="background:${x.c.color}"></span><b>${x.c.label}</b></div>`+
+const mixPath=e=>e.target.closest&&e.target.closest("#taMix path[data-i]");
+function mixTipHTML(x){
+  return `<div class="tip-h"><span class="tip-dot" style="background:${x.c.color}"></span><b>${x.c.label}</b></div>`+
     `<div class="tip-r"><span>金額</span><b>${yen(x.v)}</b></div>`+
     `<div class="tip-r"><span>構成比</span><b>${x.share.toFixed(1)}%</b></div>`;
+}
+taMixEl.addEventListener("mousemove",e=>{
+  if(touchUI.matches) return;
+  const p=mixPath(e);
+  if(!p){ hideTip(); return; }
+  tipEl.innerHTML=mixTipHTML(MIXPARTS[+p.dataset.i]);
   tipEl.style.display="block";
   moveTip(e);
 });
 taMixEl.addEventListener("mouseleave",()=>{ if(!touchUI.matches) hideTip(); });
+
+// スマホ：ポートフォリオ構成のドーナツと同じく、タップで選んでグラフ下に詳細を出す
+function mixClearSel(){
+  if(!mixSel) return;
+  mixSel.classList.remove("sel");
+  mixSel.ownerSVGElement.classList.remove("has-sel");
+  taMixEl.querySelector(".ta-mixdetail").hidden=true;
+  mixSel=null;
+}
+taMixEl.addEventListener("click",e=>{
+  if(!touchUI.matches) return;
+  const p=mixPath(e);
+  if(!p||p===mixSel){ mixClearSel(); return; }
+  mixClearSel();
+  mixSel=p;
+  p.classList.add("sel");
+  p.ownerSVGElement.classList.add("has-sel");
+  const det=taMixEl.querySelector(".ta-mixdetail");
+  det.innerHTML=mixTipHTML(MIXPARTS[+p.dataset.i]);
+  det.hidden=false;
+});
+// グラフの外をタップしたら選択を解除する
+document.addEventListener("click",e=>{ if(mixSel&&!mixPath(e)) mixClearSel(); });
 
 function renderTotal(){
   const all=combineMonthly(loadMA());
