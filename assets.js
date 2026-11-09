@@ -169,12 +169,13 @@
   ];
   const PF_SPLIT=["us","jp","fund","bond"];   // CSVの区分のうち証券を割る先。cash（米ドル現金）はExcelの預金に入っているので使わない
 
-  // Excelの最新月を分類別に出す。証券（楽天・SBI）はExcelの金額を正とし、CSVの構成比で株・投信・債券に割る。
-  // CSVのない証券会社の分は「証券（内訳なし）」に残す
-  function portfolioMix(excelRows,holdings){
+  // Excelの指定日（省略時は最新月）を分類別に出す。証券（楽天・SBI）はExcelの金額を正とし、CSVの構成比で株・投信・債券に割る。
+  // CSVのない証券会社の分は「証券（内訳なし）」に残す。
+  // provisional のときは暫定の棒と同じく、CSVのある証券会社はCSVの金額をそのまま使う
+  function portfolioMix(excelRows,holdings,{date:pick,provisional=false}={}){
     const rows=excelRows||[];
     if(!rows.length) return null;
-    const date=rows.reduce((a,r)=>r.date>a?r.date:a,"");
+    const date=pick||rows.reduce((a,r)=>r.date>a?r.date:a,"");
     const byBroker={};
     let holdDate=null;
     for(const h of holdings||[]){
@@ -194,7 +195,14 @@
       if(c!=="securities"){ cats[c]+=r.amount; continue; }
       const b=byBroker[brokerOf(r.kind,r.item)];
       if(!b){ cats.unknown+=r.amount; continue; }
+      if(provisional) continue;
       for(const k in b.parts) cats[k]+=r.amount*b.parts[k]/b.sum;
+    }
+    if(provisional){
+      for(const name of ["楽天","SBI"]){
+        const b=byBroker[name];
+        if(b) for(const k in b.parts) cats[k]+=b.parts[k];
+      }
     }
     return {date, holdDate, cats};
   }

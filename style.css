@@ -276,6 +276,7 @@
   .tab-panel[hidden]{display:none;}
   .tab-panel[data-panel="history"] .hist-wrap{padding-top:24px;}
   .appbar #dbStat{margin-left:0;white-space:nowrap;}
+  #taSvg{cursor:pointer;}
   #taSvg .ta-bar{transition:opacity .2s;}
   #taSvg.has-sel .ta-bar:not(.sel){opacity:.3;}
   #taSvg .ta-prov rect{opacity:.45;}   /* 最後の記録日より後のCSVで作った暫定の棒 */
