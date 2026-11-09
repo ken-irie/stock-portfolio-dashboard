@@ -291,6 +291,20 @@ test("portfolioMix: 明細がなければ証券は全額内訳なし。Excelが�
   eq(portfolioMix([],[]),null);
 });
 
+test("portfolioMix: 日付を指定するとその記録日の金額で按分する", ()=>{
+  const r=portfolioMix(PX,[PH("楽天","us",300),PH("楽天","jp",100)],{date:"2026-09-30"});
+  eq(r.date,"2026-09-30");
+  eq([r.cats.us,r.cats.jp,r.cats.unknown,r.cats.pension],[749.25,249.75,0,0]);
+});
+
+test("portfolioMix: 暫定はCSVのある証券会社をCSVの金額で出し、暫定の棒の合計と一致する", ()=>{
+  const h=[PH("楽天","us",300),PH("楽天","jp",100),PH("楽天","cash",50)];
+  const r=portfolioMix(PX,h,{date:"2026-10-31",provisional:true});
+  eq([r.cats.us,r.cats.jp,r.cats.unknown],[300,100,2000]);
+  const prov=provisionalMonth(PX,h.filter(x=>x.cat!=="cash"));
+  eq(PF_CATS.reduce((s,c)=>s+r.cats[c.key],0),prov.total);
+});
+
 // === /tests ===
 
 (async function run(){

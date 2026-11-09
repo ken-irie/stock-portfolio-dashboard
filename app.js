@@ -883,6 +883,8 @@ let TBARS=[];               // ホバー・タップ検索用の棒の座標
 let taSel=-1;               // スマホでタップ中の棒（TBARSの添字）
 let MIXPARTS=[];            // ホバー用の円グラフの扇
 let mixSel=null;            // スマホでタップ中の円グラフの扇
+let mixSeq=0;               // 円グラフの描画の順番（古い取得結果で上書きしないため）
+const mixCache=new Map();   // 円グラフ用：CSVの日 → DBから取った明細
 let provDB=null;            // 暫定の棒用：DBから取った、最後の記録日より後で最新のCSVの日の明細 {date, rows}
 const provLocal=new Map();  // 暫定の棒用：この画面で読み込んだCSVの日 → 明細（nullは削除した日）。DBより優先する
 
@@ -934,12 +936,51 @@ function taClearSel(){
   taDetail.hidden=true;
 }
 
-function renderMix(){
-  const m=portfolioMix(loadMA(),provHoldings());
+// 指定日以前で一番近い、明細のあるCSVの日
+function mixCsvDate(date){
+  const days=new Set(loadHist().filter(x=>x.n).map(x=>x.date));
+  for(const [d,rows] of provLocal){ if(rows) days.add(d); else days.delete(d); }
+  return [...days].filter(d=>d<=date).sort().pop()||null;
+}
+// CSVの日の明細。取得に失敗したらnull
+async function mixCsvRows(d){
+  if(provLocal.get(d)) return provLocal.get(d);
+  if(provDB&&provDB.date===d) return provDB.rows;
+  if(!sbEnabled()) return [];
+  if(!mixCache.has(d)){
+    const rows=await sbLoadHoldings(d);
+    if(!rows) return null;
+    mixCache.set(d,rows);
+  }
+  return mixCache.get(d);
+}
+
+// 棒を選んでいればその日、選んでいなければExcelの最新月の内訳を出す
+async function renderMix(){
+  const seq=++mixSeq;
+  const bar=taSel>=0 ? TBARS[taSel].m : null;
+  const months=combineMonthly(loadMA());
+  const date=bar ? bar.date : (months.length?months[months.length-1].date:"");
+  let holdings;
+  if(bar&&bar.provisional) holdings=provHoldings();
+  else{
+    const d=mixCsvDate(date);
+    const rows=d ? await mixCsvRows(d) : [];
+    if(seq!==mixSeq) return;
+    if(!rows&&bar){ taSelect(-1); return; }           // 取得失敗 → 選択を戻して最新の内訳を出す
+    holdings=(rows||[]).map(r=>({date:d,broker:r.broker,code:r.code,cat:r.cat,value:r.value}));
+    if(!bar&&!holdings.length) holdings=provHoldings();
+  }
+  const m=portfolioMix(loadMA(),holdings,bar&&bar.provisional?{date:bar.baseDate,provisional:true}:{date});
+  if(!m){ document.getElementById("taMix").innerHTML=""; return; }
+  const headDate=(bar&&bar.provisional?bar.date:m.date).replace(/-/g,"/");
+  const head=bar&&bar.provisional
+    ? `${headDate} 暫定の内訳（Excel ${m.date.replace(/-/g,"/")} ＋ 証券は ${headDate} のCSV）`
+    : `${headDate} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}`;
   const parts=PF_CATS.map(c=>({c,v:Math.max(0,m.cats[c.key])})).filter(x=>x.v>0);
   const sum=parts.reduce((s,x)=>s+x.v,0)||1;
   document.getElementById("taMix").innerHTML=
-    `<div class="ta-mixhead">${m.date.replace(/-/g,"/")} 時点の内訳${m.holdDate?`（証券は ${m.holdDate.replace(/-/g,"/")} のCSVの構成比で按分）`:""}</div>`+
+    `<div class="ta-mixhead">${head}</div>`+
     `<div class="ta-mixbody"><div class="donut-wrap ta-donutwrap"><svg class="donut ta-donut" role="img" aria-label="資産クラス別の比率"></svg>`+
     `<div class="chart-detail ta-mixdetail" hidden></div></div><div class="ta-mixlist">${parts.map(x=>
       `<div class="ta-mixrow"><i style="background:${x.c.color}"></i><span>${x.c.label}</span>`+
@@ -1096,20 +1137,26 @@ taSvg.addEventListener("mousemove",e=>{
   moveTip(e);
 });
 taSvg.addEventListener("mouseleave",()=>{ if(!touchUI.matches) hideTip(); });
-// スマホ：タップした月以外を暗くし、グラフ下に内訳を出す。同じ月をもう一度タップで解除
-taSvg.addEventListener("click",e=>{
-  if(!touchUI.matches||!TBARS.length) return;
-  e.stopPropagation();                      // 外側タップの解除処理に届かせない
-  const b=taNearest(e), i=TBARS.indexOf(b);
-  if(i===taSel){ taClearSel(); return; }
+// 棒を選ぶと他を暗くして、ドーナツをその日の内訳にする（スマホはグラフ下に金額も出す）。-1で解除
+function taSelect(i){
   taClearSel();
-  taSel=i;
-  b.g.classList.add("sel");
-  taSvg.classList.add("has-sel");
-  taDetail.innerHTML=taTipHTML(b.m);
-  taDetail.hidden=false;
+  if(i>=0){
+    const b=TBARS[i];
+    taSel=i;
+    b.g.classList.add("sel");
+    taSvg.classList.add("has-sel");
+    if(touchUI.matches){
+      taDetail.innerHTML=taTipHTML(b.m);
+      taDetail.hidden=false;
+    }
+  }
+  renderMix();
+}
+taSvg.addEventListener("click",e=>{
+  if(!TBARS.length) return;
+  const i=TBARS.indexOf(taNearest(e));
+  taSelect(i===taSel?-1:i);                 // 同じ棒をもう一度押すと最新に戻す
 });
-document.addEventListener("click",()=>{ if(taSel>=0) taClearSel(); });
 
 document.querySelectorAll("#taSeg button").forEach(b=>{
   b.addEventListener("click",()=>{
@@ -1367,7 +1414,7 @@ document.getElementById("histClear").addEventListener("click",()=>{
     histLocalWrite=true;                             // 読み戻しで消した履歴が復活しないようにする
     curDate="";
     buildDateSelector(loadHist());                   // 消した日付を選べないようにする
-    provDB=null; provLocal.clear(); renderTotal();   // 資産全体の暫定の棒も消す
+    provDB=null; provLocal.clear(); mixCache.clear(); renderTotal();   // 資産全体の暫定の棒も消す
     sbDeleteAll();
   }
 });
@@ -1531,6 +1578,6 @@ document.querySelectorAll("#pageTabs button").forEach(b=>{
     document.querySelectorAll(".tab-panel").forEach(p=>{ p.hidden = p.dataset.panel!==b.dataset.tab; });
     hideTip();                                   // 前のタブのツールチップや選択を残さない
     if(selEl) clearSel();
-    if(taSel>=0) taClearSel();
+    if(taSel>=0) taSelect(-1);
   });
 });
