@@ -81,7 +81,8 @@
   // 表示カテゴリ（積み上げの下から順）
   const ASSET_CATS=[
     {key:"securities", label:"証券",             color:"#e3c477"},
-    {key:"pension",    label:"企業DC・持株",     color:"#3ddc97"},
+    {key:"pension",    label:"企業DC",           color:"#3ddc97"},
+    {key:"esop",       label:"持株",             color:"#c6e36b"},
     {key:"deposit",    label:"預金",             color:"#5bc6d8"},
     {key:"crypto",     label:"仮想通貨",         color:"#a98bff"},
     {key:"cash",       label:"現金・電子マネー", color:"#ff9f6b"},
@@ -94,7 +95,10 @@
 
   // Excelの行を表示カテゴリに分ける
   function catOf(kind,item){
-    if(kind==="株式") return (item.includes("楽天")||item.includes("SBI")) ? "securities" : "pension";
+    if(kind==="株式"){
+      if(item.includes("楽天")||item.includes("SBI")) return "securities";
+      return item.includes("持株") ? "esop" : "pension";
+    }
     if(BOND_KINDS.has(kind)) return item.includes("SBI") ? "securities" : "other";
     if(DEPOSIT_KINDS.has(kind)) return "deposit";
     if(kind==="仮想通貨") return "crypto";
@@ -159,7 +163,8 @@
     {key:"jp",      label:"日本株",           color:"#e3c477"},
     {key:"fund",    label:"投資信託",         color:"#e97fd6"},
     {key:"bond",    label:"債券",             color:"#f4f0dc"},
-    {key:"pension", label:"企業DC・持株",     color:"#3ddc97"},
+    {key:"pension", label:"企業DC",           color:"#3ddc97"},
+    {key:"esop",    label:"持株",             color:"#c6e36b"},
     {key:"crypto",  label:"仮想通貨",         color:"#a98bff"},
     {key:"pokeca",  label:"ポケカ",           color:"#ff6b8a"},
     {key:"deposit", label:"預金",             color:"#5bc6d8"},
