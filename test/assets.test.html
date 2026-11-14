@@ -144,7 +144,7 @@ test("workbookToSheets: Dateを日付文字列にし、前日23:59台にずれ�
 });
 
 // ---- 月ごとの集計（Excelだけで計算する） ----
-// 1か月分のExcel行（証券3150 / 企業DC・持株400 / 預金1000 / 仮想通貨50 / 現金25 = 4625）
+// 1か月分のExcel行（証券3150 / 企業DC300 / 持株100 / 預金1000 / 仮想通貨50 / 現金25 = 4625）
 const BASE=[
   {kind:"株式",item:"楽天証券",amount:1000},
   {kind:"株式",item:"SBI証券",amount:2000},
@@ -159,7 +159,7 @@ const BASE=[
 ];
 const mk=(date,base)=>(base||BASE).map(r=>Object.assign({date},r));
 const EX=[...mk("2026-09-29"),...mk("2026-08-26")];
-const CATS={securities:3150,pension:400,deposit:1000,crypto:50,cash:25,pokeca:0,other:0};
+const CATS={securities:3150,pension:300,esop:100,deposit:1000,crypto:50,cash:25,pokeca:0,other:0};
 
 test("combineMonthly: Excelの値を記録日ごと・カテゴリ別にまとめ、日付順に並べる", ()=>{
   eq(combineMonthly(EX),[
@@ -187,7 +187,7 @@ test("combineMonthly: 過去年度の種類名と、知らない種類の分類"
     {kind:"債権",item:"他社",amount:256},
   ];
   eq(combineMonthly(mk("2022-04-02",base))[0].cats,
-    {securities:3,pension:4,deposit:56,crypto:0,cash:64,pokeca:0,other:384});
+    {securities:3,pension:4,esop:0,deposit:56,crypto:0,cash:64,pokeca:0,other:384});
 });
 
 test("combineMonthly: Excelが空なら空配列", ()=>{
@@ -204,7 +204,7 @@ test("provisionalMonth: 最後の記録日より後のCSVでSBIの株式・債�
     H("2026-10-12","SBI","債券",160),
   ]);
   eq(r,{date:"2026-10-12",baseDate:"2026-09-29",total:5035,
-    cats:{securities:3560,pension:400,deposit:1000,crypto:50,cash:25,pokeca:0,other:0},provisional:true});
+    cats:{securities:3560,pension:300,esop:100,deposit:1000,crypto:50,cash:25,pokeca:0,other:0},provisional:true});
 });
 
 test("provisionalMonth: 楽天とSBIの両方があれば両方差し替える", ()=>{
@@ -256,8 +256,8 @@ test("parseAssetSheets: 資産欄が空のポケカ行は種類名を資産名�
   eq(m.map(x=>x.total),[313804,313804]);
 });
 
-test("ASSET_CATS: 積み上げの下から証券・企業DC・預金・仮想通貨・現金・ポケカ・その他", ()=>{
-  eq(ASSET_CATS.map(c=>c.key),["securities","pension","deposit","crypto","cash","pokeca","other"]);
+test("ASSET_CATS: 積み上げの下から証券・企業DC・持株・預金・仮想通貨・現金・ポケカ・その他", ()=>{
+  eq(ASSET_CATS.map(c=>c.key),["securities","pension","esop","deposit","crypto","cash","pokeca","other"]);
 });
 
 const PX=[
@@ -276,7 +276,7 @@ test("portfolioMix: 楽天を構成比で按分し、CSVのないSBIは内訳な
   eq(r.date,"2026-10-31");
   eq(r.holdDate,"2026-11-03");
   eq([r.cats.us,r.cats.jp,r.cats.unknown],[750,250,2000]);
-  eq([r.cats.pension,r.cats.bond,r.cats.crypto,r.cats.deposit],[500,300,400,600]);
+  eq([r.cats.esop,r.cats.pension,r.cats.bond,r.cats.crypto,r.cats.deposit],[500,0,300,400,600]);
 });
 
 test("portfolioMix: 米ドル現金（cat cash）は構成比に入れず、合計はExcelの最新月と一致する", ()=>{
@@ -294,7 +294,7 @@ test("portfolioMix: 明細がなければ証券は全額内訳なし。Excelが�
 test("portfolioMix: 日付を指定するとその記録日の金額で按分する", ()=>{
   const r=portfolioMix(PX,[PH("楽天","us",300),PH("楽天","jp",100)],{date:"2026-09-30"});
   eq(r.date,"2026-09-30");
-  eq([r.cats.us,r.cats.jp,r.cats.unknown,r.cats.pension],[749.25,249.75,0,0]);
+  eq([r.cats.us,r.cats.jp,r.cats.unknown,r.cats.esop],[749.25,249.75,0,0]);
 });
 
 test("portfolioMix: 暫定はCSVのある証券会社をCSVの金額で出し、暫定の棒の合計と一致する", ()=>{
